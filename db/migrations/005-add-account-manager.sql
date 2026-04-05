@@ -1,0 +1,1 @@
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS account_manager VARCHAR(20) DEFAULT 'vlad';
