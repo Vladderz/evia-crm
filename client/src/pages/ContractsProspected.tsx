@@ -80,6 +80,7 @@ export default function ContractsProspected() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   const [deleteTarget, setDeleteTarget] = useState<ProspectedContract | null>(null)
+  const [pipelineIds, setPipelineIds] = useState<Set<number>>(new Set())
 
   // Debounce search
   useEffect(() => {
@@ -104,6 +105,20 @@ export default function ContractsProspected() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Fetch pipeline entries to determine which contracts are already in the pipeline
+  useEffect(() => {
+    api.get('/pipeline').then(res => {
+      const ids = new Set<number>(
+        (res.data as Array<{ prospected_contract_id: number | null }>)
+          .filter(p => p.prospected_contract_id != null)
+          .map(p => p.prospected_contract_id as number)
+      )
+      setPipelineIds(ids)
+    }).catch(() => {
+      // Silently ignore - button will just show as available
+    })
+  }, [])
 
   // Client-side search filter
   const visible = debouncedSearch
@@ -188,6 +203,23 @@ export default function ContractsProspected() {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleAddToPipeline(contract: ProspectedContract) {
+    try {
+      await api.post(`/pipeline/from-prospected/${contract.id}`)
+      toast.success('Added to Sales Pipeline')
+      setPipelineIds(prev => new Set([...prev, contract.id]))
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      if (status === 409) {
+        toast.error(message || 'Already in Sales Pipeline')
+        setPipelineIds(prev => new Set([...prev, contract.id]))
+      } else {
+        toast.error('Failed to add to pipeline. Please try again.')
+      }
     }
   }
 
@@ -318,6 +350,14 @@ export default function ContractsProspected() {
                     </td>
                     <td>{contract.added_by_name}</td>
                     <td>
+                      <button
+                        className={pipelineIds.has(contract.id) ? 'btn-pipeline-added' : 'btn-add-pipeline'}
+                        onClick={() => { if (!pipelineIds.has(contract.id)) handleAddToPipeline(contract) }}
+                        disabled={pipelineIds.has(contract.id)}
+                        type="button"
+                      >
+                        {pipelineIds.has(contract.id) ? 'In Pipeline' : 'Add to Pipeline'}
+                      </button>
                       <button
                         className="btn-promote"
                         onClick={() => handlePromote(contract)}

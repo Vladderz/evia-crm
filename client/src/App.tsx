@@ -6,6 +6,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import ActiveTenders from './pages/ActiveTenders'
 import ClientBook from './pages/ClientBook'
+import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
           >
             <Route index element={<ActiveTenders />} />
             <Route path="clients" element={<ClientBook />} />
+            <Route path="pipeline" element={<SalesPipeline />} />
             <Route path="prospected" element={<ContractsProspected />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,7 @@
 interface StatItem {
   label: string
   value: number | string
+  valueClassName?: string
 }
 
 interface Props {
@@ -13,7 +14,7 @@ export default function StatsBar({ stats, className }: Props) {
     <div className={`stats-bar${className ? ' ' + className : ''}`}>
       {stats.map(stat => (
         <div key={stat.label} className="stat-card">
-          <span className="stat-value">{stat.value}</span>
+          <span className={`stat-value${stat.valueClassName ? ' ' + stat.valueClassName : ''}`}>{stat.value}</span>
           <span className="stat-label">{stat.label}</span>
         </div>
       ))}

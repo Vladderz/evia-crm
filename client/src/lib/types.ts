@@ -27,6 +27,43 @@ export interface ProspectedContract {
   created_at: string
 }
 
+export interface PipelineProspect {
+  id: number;
+  company_name: string;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  sector: string | null;
+  region: string | null;
+  tender_title: string | null;
+  tender_url: string | null;
+  tender_reference: string | null;
+  tender_value: number | null;
+  submission_deadline: string | null;
+  award_date: string | null;
+  buyer: string | null;
+  status: string;
+  last_contact_date: string | null;
+  next_followup_date: string | null;
+  assigned_to: string | null;
+  created_by: number;
+  created_by_name: string;
+  prospected_contract_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PipelineNote {
+  id: number;
+  pipeline_id: number;
+  note: string;
+  note_type: 'manual' | 'system';
+  created_by: number;
+  created_by_name: string;
+  created_at: string;
+}
+
 export interface Tender {
   id: number
   client_id: number | null

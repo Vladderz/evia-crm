@@ -1728,3 +1728,294 @@ body {
 .btn-promote:hover {
   background: var(--purple-accent-hover);
 }
+
+/* ================================================================
+   SALES PIPELINE PAGE
+   ================================================================ */
+
+.page-pipeline {
+  max-width: 1400px;
+}
+
+/* Stats bar - 5-column variant */
+.stats-bar.stats-bar-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .stats-bar.stats-bar-5 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-bar.stats-bar-5 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-bar.stats-bar-5 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Overdue follow-ups alert colour */
+.stat-value-alert { color: #EF4444; }
+
+/* Pipeline status badge colours */
+.status-contacted      { background: #6B7280; color: white; }
+.status-call-booked    { background: #3B82F6; color: white; }
+.status-call-done      { background: #8B5CF6; color: white; }
+.status-contract-sent  { background: #F59E0B; color: white; }
+
+/* Pipeline table */
+.pipeline-table-wrapper {
+  overflow-x: auto;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.pipeline-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 960px;
+}
+
+.pipeline-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #E5E7EB;
+  background: #FAFAFA;
+  white-space: nowrap;
+}
+
+.pipeline-table td {
+  padding: 10px 14px;
+  font-size: 14px;
+  border-bottom: 1px solid #F3F4F6;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pipeline-table tbody tr:hover {
+  background: #F5F4FC;
+}
+
+.pipeline-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.td-pipeline-company {
+  white-space: normal;
+  max-width: 200px;
+  min-width: 120px;
+  word-break: break-word;
+  font-weight: 500;
+}
+
+.td-pipeline-tender {
+  white-space: normal;
+  max-width: 260px;
+  min-width: 140px;
+  word-break: break-word;
+}
+
+.td-pipeline-actions {
+  white-space: nowrap;
+}
+
+.pipeline-link {
+  color: #8A2BE2;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.pipeline-link:hover {
+  text-decoration: underline;
+}
+
+.pipeline-sub-text {
+  font-size: 12px;
+  color: #9488b8;
+  margin-top: 2px;
+  font-weight: 400;
+}
+
+/* TBC company name styling */
+.company-tbc {
+  font-style: italic;
+  color: #9488b8;
+}
+
+/* Pipeline table action buttons */
+.pipeline-table .td-pipeline-actions button {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font);
+  margin-right: 4px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pipeline-table .btn-pipeline-advance {
+  background: #10B981;
+  color: white;
+  border: none;
+  font-weight: 500;
+}
+
+.pipeline-table .btn-pipeline-advance:hover {
+  background: #059669;
+}
+
+.pipeline-table .btn-pipeline-notes {
+  background: transparent;
+  color: #6B7280;
+  border: 1px solid #D1D5DB;
+}
+
+.pipeline-table .btn-pipeline-notes:hover {
+  background: #F9FAFB;
+}
+
+.pipeline-table .btn-pipeline-edit {
+  background: transparent;
+  color: #6B7280;
+  border: 1px solid #D1D5DB;
+}
+
+.pipeline-table .btn-pipeline-edit:hover {
+  background: #F9FAFB;
+}
+
+.pipeline-table .btn-pipeline-drop {
+  background: transparent;
+  color: #EF4444;
+  border: 1px solid #FCA5A5;
+}
+
+.pipeline-table .btn-pipeline-drop:hover {
+  background: #FEF2F2;
+}
+
+.pipeline-table .btn-pipeline-delete {
+  background: transparent;
+  color: #EF4444;
+  border: 1px solid #EF4444;
+}
+
+.pipeline-table .btn-pipeline-delete:hover {
+  background: #FEF2F2;
+}
+
+/* Notes timeline */
+.notes-timeline {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.note-entry {
+  padding: 12px 0;
+  border-bottom: 1px solid #e0d9f5;
+}
+
+.note-entry:last-child {
+  border-bottom: none;
+}
+
+.note-meta {
+  font-size: 12px;
+  color: #9488b8;
+  margin-bottom: 4px;
+}
+
+.note-meta strong {
+  font-weight: 600;
+  color: #2D1B69;
+}
+
+.note-text {
+  font-size: 14px;
+  color: #1a1040;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.note-system .note-meta strong {
+  font-style: italic;
+  color: #9488b8;
+  font-weight: 400;
+}
+
+.note-system .note-text {
+  color: #9488b8;
+  font-style: italic;
+}
+
+.note-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.note-input-row textarea {
+  flex: 1;
+  resize: none;
+}
+
+.note-input-row button {
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+/* Form section headings */
+.form-section-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #9488b8;
+  letter-spacing: 0.05em;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+/* Add to Pipeline buttons on Contracts Prospected */
+.btn-add-pipeline {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 6px;
+  background: transparent;
+  color: #6B7280;
+  border: 1px solid #D1D5DB;
+  transition: background 0.15s;
+}
+
+.btn-add-pipeline:hover {
+  background: #F9FAFB;
+}
+
+.btn-pipeline-added {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  border-radius: 4px;
+  cursor: not-allowed;
+  margin-right: 6px;
+  background: transparent;
+  color: #9CA3AF;
+  border: 1px solid #E5E7EB;
+  opacity: 0.7;
+}

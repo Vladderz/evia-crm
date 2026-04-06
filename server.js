@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const tenderRoutes = require('./routes/tenders');
 const activityRoutes = require('./routes/activity');
+const pipelineRoutes = require('./routes/pipeline');
 const requireAuth = require('./middleware/requireAuth');
 
 const app = express();
@@ -58,6 +59,7 @@ app.use('/api/clients', requireAuth, clientRoutes);
 app.use('/api/tenders', requireAuth, tenderRoutes);
 app.use('/api/activity', requireAuth, activityRoutes);
 app.use('/api/prospected', requireAuth, require('./routes/prospected'));
+app.use('/api/pipeline', requireAuth, pipelineRoutes);
 
 if (isProd) {
   const distPath = path.join(__dirname, 'client', 'dist');
