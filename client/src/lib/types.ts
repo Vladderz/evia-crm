@@ -54,6 +54,15 @@ export interface PipelineProspect {
   updated_at: string;
 }
 
+export interface Note {
+  id: number
+  note: string
+  note_type: 'manual' | 'system'
+  created_by: number
+  created_by_name: string
+  created_at: string
+}
+
 export interface PipelineNote {
   id: number;
   pipeline_id: number;

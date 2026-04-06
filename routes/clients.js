@@ -39,6 +39,53 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// GET /api/clients/:id/notes - registered before /:id to avoid route conflict
+router.get('/:id/notes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT cn.*, u.name as created_by_name
+       FROM client_notes cn
+       LEFT JOIN users u ON cn.created_by = u.id
+       WHERE cn.client_id = $1
+       ORDER BY cn.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching client notes:', err);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// POST /api/clients/:id/notes - registered before /:id to avoid route conflict
+router.post('/:id/notes', async (req, res) => {
+  try {
+    const { note } = req.body;
+    if (!note || !note.trim()) {
+      return res.status(400).json({ error: 'Note cannot be empty' });
+    }
+
+    const client = await pool.query('SELECT id FROM clients WHERE id = $1', [req.params.id]);
+    if (client.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO client_notes (client_id, note, note_type, created_by)
+       VALUES ($1, $2, 'manual', $3) RETURNING *`,
+      [req.params.id, note.trim(), req.session.userId]
+    );
+
+    const user = await pool.query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    const result = { ...rows[0], created_by_name: user.rows[0]?.name || 'Unknown' };
+
+    res.status(201).json(result);
+  } catch (err) {
+    console.error('Error adding client note:', err);
+    res.status(500).json({ error: 'Failed to add note' });
+  }
+});
+
 // GET /api/clients
 router.get('/', async (req, res) => {
   try {
@@ -98,6 +145,10 @@ router.post('/', async (req, res) => {
     );
     const client = result.rows[0];
     await logActivity(req.session.userId, 'added client', client.id, { company_name });
+    await pool.query(
+      `INSERT INTO client_notes (client_id, note, note_type, created_by) VALUES ($1, 'Client added', 'system', $2)`,
+      [client.id, req.session.userId]
+    );
     return res.status(201).json(client);
   } catch (err) {
     console.error('Create client error:', err);
@@ -153,6 +204,22 @@ router.put('/:id', async (req, res) => {
       company_name: client.company_name,
       fields_changed: fieldsChanged,
     });
+
+    const newStatus = status || 'prospect';
+    if (prev.status !== newStatus) {
+      const CLIENT_STATUS_LABELS = {
+        active_client: 'Active Client',
+        prospect: 'Prospect',
+        seeking_tender: 'Seeking Tender',
+      };
+      const oldLabel = CLIENT_STATUS_LABELS[prev.status] || prev.status;
+      const newLabel = CLIENT_STATUS_LABELS[newStatus] || newStatus;
+      await pool.query(
+        `INSERT INTO client_notes (client_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
+        [req.params.id, `Status changed from ${oldLabel} to ${newLabel}`, req.session.userId]
+      );
+    }
+
     return res.json(client);
   } catch (err) {
     console.error('Update client error:', err);

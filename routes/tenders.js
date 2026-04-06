@@ -93,6 +93,53 @@ router.get('/check-duplicate', async (req, res) => {
   }
 });
 
+// GET /api/tenders/:id/notes - registered before /:id to avoid route conflict
+router.get('/:id/notes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT tn.*, u.name as created_by_name
+       FROM tender_notes tn
+       LEFT JOIN users u ON tn.created_by = u.id
+       WHERE tn.tender_id = $1
+       ORDER BY tn.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching tender notes:', err);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// POST /api/tenders/:id/notes - registered before /:id to avoid route conflict
+router.post('/:id/notes', async (req, res) => {
+  try {
+    const { note } = req.body;
+    if (!note || !note.trim()) {
+      return res.status(400).json({ error: 'Note cannot be empty' });
+    }
+
+    const tender = await pool.query('SELECT id FROM tenders WHERE id = $1', [req.params.id]);
+    if (tender.rows.length === 0) {
+      return res.status(404).json({ error: 'Tender not found' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by)
+       VALUES ($1, $2, 'manual', $3) RETURNING *`,
+      [req.params.id, note.trim(), req.session.userId]
+    );
+
+    const user = await pool.query('SELECT name FROM users WHERE id = $1', [req.session.userId]);
+    const result = { ...rows[0], created_by_name: user.rows[0]?.name || 'Unknown' };
+
+    res.status(201).json(result);
+  } catch (err) {
+    console.error('Error adding tender note:', err);
+    res.status(500).json({ error: 'Failed to add note' });
+  }
+});
+
 // GET /api/tenders
 router.get('/', async (req, res) => {
   const { view } = req.query;
@@ -201,6 +248,10 @@ router.post('/', async (req, res) => {
       buyer: tender.buyer,
       value: tender.estimated_value,
     });
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, 'Tender added', 'system', $2)`,
+      [tender.id, req.session.userId]
+    );
     return res.status(201).json(tender);
   } catch (err) {
     console.error('Create tender error:', err);
@@ -274,6 +325,23 @@ router.put('/:id', async (req, res) => {
         title: tender.title,
         fields_changed: fieldsChanged,
       });
+    }
+
+    if (prev.status !== status) {
+      const TENDER_STATUS_LABELS = {
+        questionnaire_sent: 'Questionnaire Sent',
+        writing: 'Writing',
+        submitted: 'Submitted / Awaiting Result',
+        won: 'Won',
+        lost: 'Lost',
+        archived: 'Archived',
+      };
+      const oldLabel = TENDER_STATUS_LABELS[prev.status] || prev.status;
+      const newLabel = TENDER_STATUS_LABELS[status] || status;
+      await pool.query(
+        `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
+        [req.params.id, `Status changed from ${oldLabel} to ${newLabel}`, req.session.userId]
+      );
     }
 
     return res.json(tender);

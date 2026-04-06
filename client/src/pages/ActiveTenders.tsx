@@ -8,6 +8,7 @@ import ViewToggle from '../components/ViewToggle'
 import TenderCard from '../components/TenderCard'
 import TenderForm from '../components/TenderForm'
 import SlidePanel from '../components/SlidePanel'
+import NotesPanel from '../components/NotesPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LoadingSpinner from '../components/LoadingSpinner'
 import {
@@ -65,6 +66,9 @@ export default function ActiveTenders() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingTender, setEditingTender] = useState<Tender | null>(null)
   const [formKey, setFormKey] = useState(0)
+
+  // Notes panel
+  const [notesPanelTender, setNotesPanelTender] = useState<{ id: number; title: string } | null>(null)
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null)
@@ -131,15 +135,22 @@ export default function ActiveTenders() {
   })
 
   function openAdd() {
+    setNotesPanelTender(null)
     setEditingTender(null)
     setFormKey(k => k + 1)
     setPanelOpen(true)
   }
 
   function openEdit(tender: Tender) {
+    setNotesPanelTender(null)
     setEditingTender(tender)
     setFormKey(k => k + 1)
     setPanelOpen(true)
+  }
+
+  function openNotes(tender: { id: number; title: string }) {
+    setPanelOpen(false)
+    setNotesPanelTender(tender)
   }
 
   function handleViewChange(index: number) {
@@ -351,6 +362,13 @@ export default function ActiveTenders() {
                       <td>{formatCurrency(tender.evia_fee)}</td>
                       <td>{tender.assigned_to ?? ''}</td>
                       <td className="td-actions">
+                        <button
+                          className="btn-edit"
+                          type="button"
+                          onClick={() => openNotes({ id: tender.id, title: tender.title })}
+                        >
+                          Notes
+                        </button>
                         {tender.status === 'questionnaire_sent' && (
                           <button
                             className="btn-advance"
@@ -428,6 +446,7 @@ export default function ActiveTenders() {
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
                 onAdvance={handleAdvance}
+                onNotes={t => openNotes({ id: t.id, title: t.title })}
               />
             ))}
           </div>
@@ -449,6 +468,15 @@ export default function ActiveTenders() {
           onClose={() => setPanelOpen(false)}
         />
       </SlidePanel>
+
+      {/* Notes panel */}
+      <NotesPanel
+        isOpen={notesPanelTender !== null}
+        onClose={() => setNotesPanelTender(null)}
+        title={`${notesPanelTender?.title ?? ''} - Notes`}
+        entityType="tender"
+        entityId={notesPanelTender?.id ?? null}
+      />
 
       {/* Delete confirmation */}
       <ConfirmDialog

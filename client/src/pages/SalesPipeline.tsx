@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, type ChangeEvent, type FormEvent } from 'react'
 import api from '../lib/api'
-import type { PipelineProspect, PipelineNote } from '../lib/types'
+import type { PipelineProspect } from '../lib/types'
 import StatsBar from '../components/StatsBar'
 import SlidePanel from '../components/SlidePanel'
+import NotesPanel from '../components/NotesPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { useToast } from '../components/ToastProvider'
@@ -86,16 +87,6 @@ function emptyForm(): FormState {
   }
 }
 
-function formatNoteDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export default function SalesPipeline() {
   const toast = useToast()
 
@@ -124,9 +115,6 @@ export default function SalesPipeline() {
   // Notes panel
   const [notesOpen, setNotesOpen] = useState(false)
   const [notesProspect, setNotesProspect] = useState<PipelineProspect | null>(null)
-  const [notes, setNotes] = useState<PipelineNote[]>([])
-  const [noteText, setNoteText] = useState('')
-  const [savingNote, setSavingNote] = useState(false)
 
   // Confirm dialogs
   const [dropTarget, setDropTarget] = useState<PipelineProspect | null>(null)
@@ -180,6 +168,7 @@ export default function SalesPipeline() {
   })
 
   function openAdd() {
+    setNotesOpen(false)
     setEditingProspect(null)
     setForm(emptyForm())
     setCompanyError(false)
@@ -188,6 +177,7 @@ export default function SalesPipeline() {
   }
 
   function openEdit(prospect: PipelineProspect) {
+    setNotesOpen(false)
     setEditingProspect(prospect)
     setForm({
       company_name: prospect.company_name,
@@ -215,15 +205,9 @@ export default function SalesPipeline() {
   }
 
   function openNotes(prospect: PipelineProspect) {
+    setPanelOpen(false)
     setNotesProspect(prospect)
-    setNotes([])
-    setNoteText('')
     setNotesOpen(true)
-    api.get(`/pipeline/${prospect.id}/notes`).then(res => {
-      setNotes(res.data)
-    }).catch(() => {
-      toast.error('Failed to load notes')
-    })
   }
 
   function handleField(e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -372,20 +356,6 @@ export default function SalesPipeline() {
       toast.success(`${prospect.company_name} deleted`)
     } catch {
       toast.error('Failed to delete prospect')
-    }
-  }
-
-  async function handleAddNote() {
-    if (!noteText.trim() || !notesProspect) return
-    setSavingNote(true)
-    try {
-      const res = await api.post(`/pipeline/${notesProspect.id}/notes`, { note: noteText.trim() })
-      setNotes(prev => [res.data, ...prev])
-      setNoteText('')
-    } catch {
-      toast.error('Failed to add note')
-    } finally {
-      setSavingNote(false)
     }
   }
 
@@ -589,55 +559,13 @@ export default function SalesPipeline() {
       )}
 
       {/* Notes panel */}
-      <SlidePanel
-        open={notesOpen}
+      <NotesPanel
+        isOpen={notesOpen}
         onClose={() => setNotesOpen(false)}
         title={notesProspect ? `${notesProspect.company_name} - Notes` : 'Notes'}
-      >
-        <div className="note-input-row">
-          <textarea
-            rows={2}
-            placeholder="Add a note..."
-            value={noteText}
-            onChange={e => setNoteText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleAddNote()
-              }
-            }}
-          />
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={handleAddNote}
-            disabled={savingNote || !noteText.trim()}
-          >
-            Add Note
-          </button>
-        </div>
-        <div className="notes-timeline">
-          {notes.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#9488b8' }}>No notes yet</p>
-          ) : (
-            notes.map(note => (
-              <div
-                key={note.id}
-                className={`note-entry${note.note_type === 'system' ? ' note-system' : ''}`}
-              >
-                <div className="note-meta">
-                  <strong>
-                    {note.note_type === 'system' ? 'System' : note.created_by_name}
-                  </strong>
-                  {' - '}
-                  {formatNoteDate(note.created_at)}
-                </div>
-                <div className="note-text">{note.note}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </SlidePanel>
+        entityType="pipeline"
+        entityId={notesProspect?.id ?? null}
+      />
 
       {/* Add/Edit panel */}
       <SlidePanel

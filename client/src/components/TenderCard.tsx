@@ -7,6 +7,7 @@ interface Props {
   onEdit: (tender: Tender) => void
   onDelete: (tender: Tender) => void
   onAdvance: (tender: Tender, newStatus: string) => void
+  onNotes?: (tender: Tender) => void
 }
 
 const NEXT_STATUS: Record<string, string> = {
@@ -71,7 +72,7 @@ function formatFee(value: number | null | undefined): string {
   return 'Fee: £' + Math.round(value).toLocaleString('en-GB')
 }
 
-export default function TenderCard({ tender, view, onEdit, onDelete, onAdvance }: Props) {
+export default function TenderCard({ tender, view, onEdit, onDelete, onAdvance, onNotes }: Props) {
   const deadlineInfo = getDeadlineInfo(tender.submission_deadline)
 
   const borderClass = view === 'results'
@@ -202,6 +203,9 @@ export default function TenderCard({ tender, view, onEdit, onDelete, onAdvance }
           {tender.created_by_name ? `Added by ${tender.created_by_name}` : 'Added'} - {formatDate(tender.created_at)}
         </span>
         <div className="tender-card-actions">
+          {onNotes && (
+            <button className="btn-card-edit" onClick={() => onNotes(tender)}>Notes</button>
+          )}
           <button className="btn-card-edit" onClick={() => onEdit(tender)}>Edit</button>
           <button className="btn-card-delete" onClick={() => onDelete(tender)}>Delete</button>
         </div>

@@ -3,6 +3,7 @@ import api from '../lib/api'
 import type { Client } from '../lib/types'
 import StatsBar from '../components/StatsBar'
 import SlidePanel from '../components/SlidePanel'
+import NotesPanel from '../components/NotesPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { useToast } from '../components/ToastProvider'
@@ -54,6 +55,8 @@ export default function ClientBook() {
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const [notesPanelClient, setNotesPanelClient] = useState<{ id: number; name: string } | null>(null)
 
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
 
@@ -109,6 +112,7 @@ export default function ClientBook() {
     })
 
   function openAdd() {
+    setNotesPanelClient(null)
     setEditingClient(null)
     setForm({ ...EMPTY_FORM })
     setFormError('')
@@ -116,6 +120,7 @@ export default function ClientBook() {
   }
 
   function openEdit(client: Client) {
+    setNotesPanelClient(null)
     setEditingClient(client)
     setForm({
       company_name: client.company_name,
@@ -306,6 +311,12 @@ export default function ClientBook() {
                     </td>
                     <td>{managerLabel}</td>
                     <td className="td-actions">
+                      <button
+                        className="btn-edit"
+                        onClick={() => { setPanelOpen(false); setNotesPanelClient({ id: client.id, name: client.company_name }) }}
+                      >
+                        Notes
+                      </button>
                       <button className="btn-edit" onClick={() => openEdit(client)}>Edit</button>
                       <button className="btn-delete" onClick={() => setDeleteTarget(client)}>Delete</button>
                     </td>
@@ -400,6 +411,14 @@ export default function ClientBook() {
           </div>
         </form>
       </SlidePanel>
+
+      <NotesPanel
+        isOpen={notesPanelClient !== null}
+        onClose={() => setNotesPanelClient(null)}
+        title={`${notesPanelClient?.name ?? ''} - Notes`}
+        entityType="client"
+        entityId={notesPanelClient?.id ?? null}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

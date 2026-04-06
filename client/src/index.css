@@ -1978,6 +1978,13 @@ body {
   align-self: flex-end;
 }
 
+.notes-empty {
+  font-size: 12px;
+  color: #9488b8;
+  text-align: center;
+  padding: 24px 0;
+}
+
 /* Form section headings */
 .form-section-heading {
   font-size: 11px;
