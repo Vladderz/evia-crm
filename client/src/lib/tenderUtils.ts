@@ -2,7 +2,7 @@
 // Used by the Live Pipeline table (ActiveTenders.tsx) and the Results tab cards (TenderCard.tsx).
 
 export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-GB', {
+  return new Date(dateString.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -12,9 +12,9 @@ export function formatDate(dateString: string): string {
 export function getDeadlineCountdown(dateString: string | null): { text: string; colorClass: string } {
   if (!dateString) return { text: '-', colorClass: '' }
   const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const dl = new Date(dateString + 'T00:00:00')
-  const diffDays = Math.ceil((dl.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  const dl = new Date(dateString.slice(0, 10) + 'T00:00:00')
+  const diffMs = dl.getTime() - now.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
   if (diffDays < 0) return { text: 'Overdue', colorClass: 'deadline-countdown-red' }
   if (diffDays === 0) return { text: 'Today', colorClass: 'deadline-countdown-red' }
