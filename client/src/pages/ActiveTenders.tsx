@@ -320,7 +320,7 @@ export default function ActiveTenders() {
                         {tender.submission_deadline ? (
                           <>
                             {formatDate(tender.submission_deadline)}{' '}
-                            {countdown.colorClass ? (
+                            {countdown.colorClass && countdown.text !== 'Overdue' ? (
                               <span className={countdown.colorClass}>({countdown.text})</span>
                             ) : null}
                           </>
