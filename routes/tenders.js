@@ -161,7 +161,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/tenders
 router.post('/', async (req, res) => {
   const {
-    client_id, title, buyer, estimated_value, evia_fee, submission_deadline,
+    client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
     portal, reference_number, sector, tender_url, status,
     assigned_to, notes,
   } = req.body;
@@ -173,9 +173,9 @@ router.post('/', async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO tenders
-        (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, portal,
+        (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
          reference_number, sector, tender_url, status, assigned_to, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         client_id || null,
@@ -184,6 +184,7 @@ router.post('/', async (req, res) => {
         estimated_value || null,
         evia_fee || null,
         submission_deadline || null,
+        award_date || null,
         portal || null,
         reference_number || null,
         sector || null,
@@ -226,6 +227,7 @@ router.put('/:id', async (req, res) => {
     const estimatedValue     = 'estimated_value'     in b ? (b.estimated_value || null)     : prev.estimated_value;
     const eviaFee            = 'evia_fee'            in b ? (b.evia_fee || null)            : prev.evia_fee;
     const submissionDeadline = 'submission_deadline' in b ? (b.submission_deadline || null) : prev.submission_deadline;
+    const awardDate          = 'award_date'          in b ? (b.award_date || null)          : prev.award_date;
     const portal             = 'portal'              in b ? (b.portal || null)              : prev.portal;
     const referenceNumber    = 'reference_number'    in b ? (b.reference_number || null)    : prev.reference_number;
     const sector             = 'sector'              in b ? (b.sector || null)              : prev.sector;
@@ -242,16 +244,17 @@ router.put('/:id', async (req, res) => {
         estimated_value     = $4,
         evia_fee            = $5,
         submission_deadline = $6,
-        portal              = $7,
-        reference_number    = $8,
-        sector              = $9,
-        tender_url          = $10,
-        status              = $11,
-        assigned_to         = $12,
-        notes               = $13
-       WHERE id = $14
+        award_date          = $7,
+        portal              = $8,
+        reference_number    = $9,
+        sector              = $10,
+        tender_url          = $11,
+        status              = $12,
+        assigned_to         = $13,
+        notes               = $14
+       WHERE id = $15
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, req.params.id]
     );
 
     const tender = result.rows[0];
@@ -265,7 +268,7 @@ router.put('/:id', async (req, res) => {
         evia_fee: tender.evia_fee,
       });
     } else {
-      const trackFields = ['client_id', 'title', 'buyer', 'estimated_value', 'submission_deadline', 'portal', 'reference_number', 'sector', 'tender_url', 'status', 'assigned_to', 'notes'];
+      const trackFields = ['client_id', 'title', 'buyer', 'estimated_value', 'submission_deadline', 'award_date', 'portal', 'reference_number', 'sector', 'tender_url', 'status', 'assigned_to', 'notes'];
       const fieldsChanged = trackFields.filter(f => String(prev[f]) !== String(tender[f]));
       await logActivity(req.session.userId, 'updated tender', 'tender', tender.id, {
         title: tender.title,

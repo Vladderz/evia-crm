@@ -88,7 +88,11 @@ router.post('/extract', async (req, res) => {
         release.tender.items[0].classification &&
         release.tender.items[0].classification.description) ||
       null;
-    return res.json({ success: true, data: { title, submission_deadline, ocds_id, source: 'fts', value, buyer, sector } });
+    const award_date =
+      (release.tender.awardPeriod && release.tender.awardPeriod.endDate)
+        ? release.tender.awardPeriod.endDate.slice(0, 10)
+        : null;
+    return res.json({ success: true, data: { title, submission_deadline, ocds_id, source: 'fts', value, buyer, sector, award_date } });
   } catch (err) {
     console.error('Extract error:', err);
     return res.json({ success: false, message: 'Could not extract details from this URL. Please enter the details manually.' });

@@ -18,6 +18,7 @@ interface FormState {
   estimated_value: string
   evia_fee: string
   submission_deadline: string
+  award_date: string
   portal: string
   reference_number: string
   sector: string
@@ -63,6 +64,7 @@ export default function TenderForm({ tender, clients, currentUserName, onSuccess
     estimated_value: '',
     evia_fee: '',
     submission_deadline: '',
+    award_date: '',
     portal: '',
     reference_number: '',
     sector: '',
@@ -91,6 +93,7 @@ export default function TenderForm({ tender, clients, currentUserName, onSuccess
         estimated_value: tender.estimated_value ? String(tender.estimated_value) : '',
         evia_fee: tender.evia_fee ? String(Math.round(tender.evia_fee)) : '',
         submission_deadline: toDatetimeLocal(tender.submission_deadline),
+        award_date: tender.award_date ? tender.award_date.slice(0, 10) : '',
         portal: tender.portal ?? '',
         reference_number: tender.reference_number ?? '',
         sector: tender.sector ?? '',
@@ -180,11 +183,12 @@ export default function TenderForm({ tender, clients, currentUserName, onSuccess
     try {
       const res = await api.post('/prospected/extract', { url: pastedUrl })
       if (res.data.success) {
-        const { title, submission_deadline, ocds_id, value, buyer, sector } = res.data.data
+        const { title, submission_deadline, ocds_id, value, buyer, sector, award_date } = res.data.data
         setForm(prev => ({
           ...prev,
           title: prev.title || title,
           submission_deadline: prev.submission_deadline || (submission_deadline ? submission_deadline + 'T00:00' : ''),
+          award_date: prev.award_date || (award_date ? award_date : ''),
           reference_number: prev.reference_number || ocds_id || '',
           estimated_value: prev.estimated_value || (value != null ? String(value) : ''),
           buyer: prev.buyer || (buyer != null ? buyer : ''),
@@ -219,6 +223,7 @@ export default function TenderForm({ tender, clients, currentUserName, onSuccess
       estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : null,
       evia_fee: form.evia_fee ? parseFloat(form.evia_fee) : null,
       submission_deadline: form.submission_deadline || null,
+      award_date: form.award_date || null,
       portal: form.portal || null,
       reference_number: form.reference_number || null,
       sector: form.sector || null,
@@ -349,6 +354,18 @@ export default function TenderForm({ tender, clients, currentUserName, onSuccess
           name="submission_deadline"
           type="datetime-local"
           value={form.submission_deadline}
+          onChange={handleField}
+        />
+      </div>
+
+      {/* Award Date */}
+      <div className="form-group">
+        <label htmlFor="tf-award-date">Award Date</label>
+        <input
+          id="tf-award-date"
+          name="award_date"
+          type="date"
+          value={form.award_date}
           onChange={handleField}
         />
       </div>

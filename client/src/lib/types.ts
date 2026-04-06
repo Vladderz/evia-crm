@@ -36,6 +36,7 @@ export interface Tender {
   estimated_value: number | null
   evia_fee: number | null
   submission_deadline: string | null
+  award_date: string | null
   portal: string | null
   reference_number: string | null
   sector: string | null

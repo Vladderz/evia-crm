@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS tenders (
   buyer               TEXT,
   estimated_value     NUMERIC,
   submission_deadline TIMESTAMPTZ,
+  award_date          DATE,
   portal              TEXT,
   reference_number    TEXT,
   sector              TEXT,

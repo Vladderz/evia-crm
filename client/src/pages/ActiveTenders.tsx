@@ -287,7 +287,7 @@ export default function ActiveTenders() {
                 <tr>
                   <th>Tender</th>
                   <th>Status</th>
-                  <th>Deadline</th>
+                  <th>Dates</th>
                   <th>Client</th>
                   <th>Value</th>
                   <th>Fee</th>
@@ -298,6 +298,7 @@ export default function ActiveTenders() {
               <tbody>
                 {visibleLive.map(tender => {
                   const countdown = getDeadlineCountdown(tender.submission_deadline)
+                  const awardCountdown = getDeadlineCountdown(tender.award_date)
                   return (
                     <tr key={tender.id}>
                       <td className="td-tender-title">
@@ -314,16 +315,30 @@ export default function ActiveTenders() {
                           {getStatusLabel(tender.status)}
                         </span>
                       </td>
-                      <td>
-                        {tender.submission_deadline ? (
-                          <>
-                            {formatDate(tender.submission_deadline)}{' '}
-                            {countdown.colorClass ? (
-                              <span className={countdown.colorClass}>({countdown.text})</span>
-                            ) : null}
-                          </>
-                        ) : (
+                      <td style={{ minWidth: '200px' }}>
+                        {!tender.submission_deadline && !tender.award_date ? (
                           '-'
+                        ) : (
+                          <div>
+                            {tender.submission_deadline && (
+                              <div>
+                                <span style={{ fontSize: '11px', color: '#9488b8', fontWeight: 'normal' }}>Submission: </span>
+                                {formatDate(tender.submission_deadline)}{' '}
+                                {countdown.colorClass ? (
+                                  <span className={countdown.colorClass}>({countdown.text})</span>
+                                ) : null}
+                              </div>
+                            )}
+                            {tender.award_date && (
+                              <div style={{ marginTop: tender.submission_deadline ? '4px' : '0' }}>
+                                <span style={{ fontSize: '11px', color: '#9488b8', fontWeight: 'normal' }}>Award: </span>
+                                {formatDate(tender.award_date)}{' '}
+                                {awardCountdown.colorClass ? (
+                                  <span className={awardCountdown.colorClass}>({awardCountdown.text})</span>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td>
