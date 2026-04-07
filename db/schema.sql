@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS clients (
   website      TEXT,
   sector       TEXT,
   region       TEXT,
-  status       TEXT CHECK (status IN ('active_client', 'seeking_tender', 'nurturing', 'cold')) DEFAULT 'nurturing',
+  status       TEXT CHECK (status IN ('active_client', 'seeking_tender', 'prospect')) DEFAULT 'prospect',
   notes        TEXT,
   account_manager VARCHAR(20) DEFAULT 'vlad',
   created_by   INTEGER REFERENCES users(id),
