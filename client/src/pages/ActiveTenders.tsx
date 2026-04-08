@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import api from '../lib/api'
 import type { Client, Tender } from '../lib/types'
 import { useAuth } from '../context/AuthContext'
@@ -312,7 +312,8 @@ export default function ActiveTenders() {
                   const countdown = getDeadlineCountdown(tender.submission_deadline)
                   const awardCountdown = getDeadlineCountdown(tender.award_date)
                   return (
-                    <tr key={tender.id}>
+                    <Fragment key={tender.id}>
+                    <tr className={tender.latest_note_text ? 'has-sub-note' : ''}>
                       <td className="td-tender-title">
                         {tender.tender_url ? (
                           <a href={tender.tender_url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -421,6 +422,20 @@ export default function ActiveTenders() {
                         </button>
                       </td>
                     </tr>
+                    {tender.latest_note_text && (
+                      <tr className="note-sub-row">
+                        <td colSpan={9}>
+                          <div className="note-sub-row-inner">
+                            <span className="note-sub-row-icon">N</span>
+                            <span className="note-sub-row-date">
+                              {new Date(tender.latest_note_date!.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                            <span className="note-sub-row-text">{tender.latest_note_text}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -472,7 +487,7 @@ export default function ActiveTenders() {
       {/* Notes panel */}
       <NotesPanel
         isOpen={notesPanelTender !== null}
-        onClose={() => setNotesPanelTender(null)}
+        onClose={() => { setNotesPanelTender(null); fetchData() }}
         title={`${notesPanelTender?.title ?? ''} - Notes`}
         entityType="tender"
         entityId={notesPanelTender?.id ?? null}

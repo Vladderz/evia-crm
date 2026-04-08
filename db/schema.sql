@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS sales_pipeline (
   prospected_contract_id INTEGER,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  CONSTRAINT sales_pipeline_status_check CHECK (status IN ('contacted', 'call_booked', 'call_done', 'contract_sent', 'agreed', 'not_interested'))
+  CONSTRAINT sales_pipeline_status_check CHECK (status IN ('contacted', 'call_booked', 'contract_summary_sent', 'agreed', 'not_interested'))
 );
 
 -- Pipeline notes table

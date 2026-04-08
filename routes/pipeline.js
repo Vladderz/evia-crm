@@ -18,17 +18,15 @@ async function logActivity(userId, action, entityType, entityId, details) {
 const STATUS_LABELS = {
   contacted: 'Contacted',
   call_booked: 'Call Booked',
-  call_done: 'Call Done',
-  contract_sent: 'Contract Sent',
+  contract_summary_sent: 'Contract Summary Sent',
   agreed: 'Agreed',
   not_interested: 'Not Interested',
 };
 
 const ADVANCE_MAP = {
   contacted: 'call_booked',
-  call_booked: 'call_done',
-  call_done: 'contract_sent',
-  contract_sent: 'agreed',
+  call_booked: 'contract_summary_sent',
+  contract_summary_sent: 'agreed',
 };
 
 // GET /api/pipeline/stats
@@ -38,8 +36,8 @@ router.get('/stats', async (req, res) => {
       SELECT
         COUNT(*) FILTER (WHERE status NOT IN ('agreed', 'not_interested')) as total,
         COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
-        COUNT(*) FILTER (WHERE status IN ('call_booked', 'call_done')) as in_discussion,
-        COUNT(*) FILTER (WHERE status = 'contract_sent') as contract_sent,
+        COUNT(*) FILTER (WHERE status = 'call_booked') as call_booked,
+        COUNT(*) FILTER (WHERE status = 'contract_summary_sent') as contract_summary_sent,
         COUNT(*) FILTER (WHERE next_followup_date <= CURRENT_DATE AND status NOT IN ('agreed', 'not_interested')) as overdue_followups
       FROM sales_pipeline
     `);
@@ -47,8 +45,8 @@ router.get('/stats', async (req, res) => {
     return res.json({
       total: parseInt(row.total) || 0,
       contacted: parseInt(row.contacted) || 0,
-      in_discussion: parseInt(row.in_discussion) || 0,
-      contract_sent: parseInt(row.contract_sent) || 0,
+      call_booked: parseInt(row.call_booked) || 0,
+      contract_summary_sent: parseInt(row.contract_summary_sent) || 0,
       overdue_followups: parseInt(row.overdue_followups) || 0,
     });
   } catch (err) {
@@ -127,9 +125,19 @@ router.get('/', async (req, res) => {
   try {
     const { status } = req.query;
     let query = `
-      SELECT sp.*, u.name as created_by_name
+      SELECT sp.*, u.name as created_by_name,
+        latest_note.note AS latest_note_text,
+        latest_note.created_at AS latest_note_date,
+        latest_note.note_type AS latest_note_type
       FROM sales_pipeline sp
       LEFT JOIN users u ON sp.created_by = u.id
+      LEFT JOIN LATERAL (
+        SELECT note, created_at, note_type
+        FROM pipeline_notes
+        WHERE pipeline_notes.pipeline_id = sp.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) latest_note ON true
       WHERE sp.status NOT IN ('agreed', 'not_interested')
     `;
     const params = [];

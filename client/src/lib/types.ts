@@ -13,6 +13,9 @@ export interface Client {
   created_by_name: string | null
   created_at: string
   updated_at: string
+  latest_note_text?: string | null
+  latest_note_date?: string | null
+  latest_note_type?: string | null
 }
 
 export interface ProspectedContract {
@@ -52,6 +55,9 @@ export interface PipelineProspect {
   prospected_contract_id: number | null;
   created_at: string;
   updated_at: string;
+  latest_note_text?: string | null;
+  latest_note_date?: string | null;
+  latest_note_type?: string | null;
 }
 
 export interface Note {
@@ -94,4 +100,7 @@ export interface Tender {
   created_by_name: string | null
   created_at: string
   updated_at: string
+  latest_note_text?: string | null
+  latest_note_date?: string | null
+  latest_note_type?: string | null
 }

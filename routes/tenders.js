@@ -147,30 +147,51 @@ router.get('/', async (req, res) => {
     await runAutoArchive(req.session.userId);
 
     let query;
+    const latestNoteJoin = `
+      LEFT JOIN LATERAL (
+        SELECT note, created_at, note_type
+        FROM tender_notes
+        WHERE tender_notes.tender_id = t.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) latest_note ON true
+    `;
+    const noteSelect = `
+      latest_note.note AS latest_note_text,
+      latest_note.created_at AS latest_note_date,
+      latest_note.note_type AS latest_note_type
+    `;
+
     if (view === 'live') {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name
+        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+          ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
+        ${latestNoteJoin}
         WHERE t.status IN ('questionnaire_sent', 'writing', 'submitted')
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;
     } else if (view === 'results') {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name
+        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+          ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
+        ${latestNoteJoin}
         WHERE t.status IN ('won', 'lost')
         ORDER BY t.updated_at DESC
       `;
     } else {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name
+        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+          ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
+        ${latestNoteJoin}
         WHERE t.status NOT IN ('archived', 'prospecting')
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;

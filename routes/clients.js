@@ -90,9 +90,19 @@ router.post('/:id/notes', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT c.*, u.name AS created_by_name
+      SELECT c.*, u.name AS created_by_name,
+        latest_note.note AS latest_note_text,
+        latest_note.created_at AS latest_note_date,
+        latest_note.note_type AS latest_note_type
       FROM clients c
       LEFT JOIN users u ON c.created_by = u.id
+      LEFT JOIN LATERAL (
+        SELECT note, created_at, note_type
+        FROM client_notes
+        WHERE client_notes.client_id = c.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) latest_note ON true
       ORDER BY c.updated_at DESC
     `);
     return res.json(result.rows);

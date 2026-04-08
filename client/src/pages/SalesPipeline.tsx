@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ChangeEvent, type FormEvent } from 'react'
+import { Fragment, useState, useEffect, useCallback, type ChangeEvent, type FormEvent } from 'react'
 import api from '../lib/api'
 import type { PipelineProspect } from '../lib/types'
 import StatsBar from '../components/StatsBar'
@@ -12,24 +12,22 @@ import { formatDate, getDeadlineCountdown, calculateEviaFee } from '../lib/tende
 const STATUS_LABELS: Record<string, string> = {
   contacted: 'Contacted',
   call_booked: 'Call Booked',
-  call_done: 'Call Done',
-  contract_sent: 'Contract Sent',
+  contract_summary_sent: 'Contract Summary Sent',
   agreed: 'Agreed',
   not_interested: 'Not Interested',
 }
 
 const ADVANCE_LABELS: Record<string, string> = {
   contacted: 'Book Call',
-  call_booked: 'Call Done',
-  call_done: 'Send Contract',
-  contract_sent: 'Agreed',
+  call_booked: 'Send Summary',
+  contract_summary_sent: 'Agreed',
 }
 
 interface PipelineStats {
   total: number
   contacted: number
-  in_discussion: number
-  contract_sent: number
+  call_booked: number
+  contract_summary_sent: number
   overdue_followups: number
 }
 
@@ -92,7 +90,7 @@ export default function SalesPipeline() {
 
   const [prospects, setProspects] = useState<PipelineProspect[]>([])
   const [stats, setStats] = useState<PipelineStats>({
-    total: 0, contacted: 0, in_discussion: 0, contract_sent: 0, overdue_followups: 0,
+    total: 0, contacted: 0, call_booked: 0, contract_summary_sent: 0, overdue_followups: 0,
   })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -367,8 +365,8 @@ export default function SalesPipeline() {
   const statItems = [
     { label: 'Active Prospects', value: stats.total },
     { label: 'Contacted', value: stats.contacted },
-    { label: 'In Discussion', value: stats.in_discussion },
-    { label: 'Contract Sent', value: stats.contract_sent },
+    { label: 'Call Booked', value: stats.call_booked },
+    { label: 'Summary Sent', value: stats.contract_summary_sent },
     {
       label: 'Overdue Follow-ups',
       value: stats.overdue_followups,
@@ -411,8 +409,7 @@ export default function SalesPipeline() {
             <option value="">All</option>
             <option value="contacted">Contacted</option>
             <option value="call_booked">Call Booked</option>
-            <option value="call_done">Call Done</option>
-            <option value="contract_sent">Contract Sent</option>
+            <option value="contract_summary_sent">Contract Summary Sent</option>
           </select>
           <select
             className="toolbar-select"
@@ -455,7 +452,8 @@ export default function SalesPipeline() {
                 const followupCountdown = getDeadlineCountdown(prospect.next_followup_date)
                 const isTBC = prospect.company_name === 'TBC'
                 return (
-                  <tr key={prospect.id}>
+                  <Fragment key={prospect.id}>
+                  <tr className={prospect.latest_note_text ? 'has-sub-note' : ''}>
                     <td className="td-pipeline-company">
                       {isTBC ? (
                         <span className="company-tbc">{prospect.company_name}</span>
@@ -551,6 +549,20 @@ export default function SalesPipeline() {
                       </button>
                     </td>
                   </tr>
+                  {prospect.latest_note_text && (
+                    <tr className="note-sub-row">
+                      <td colSpan={7}>
+                        <div className="note-sub-row-inner">
+                          <span className="note-sub-row-icon">N</span>
+                          <span className="note-sub-row-date">
+                            {new Date(prospect.latest_note_date!.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                          <span className="note-sub-row-text">{prospect.latest_note_text}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -561,7 +573,7 @@ export default function SalesPipeline() {
       {/* Notes panel */}
       <NotesPanel
         isOpen={notesOpen}
-        onClose={() => setNotesOpen(false)}
+        onClose={() => { setNotesOpen(false); fetchData() }}
         title={notesProspect ? `${notesProspect.company_name} - Notes` : 'Notes'}
         entityType="pipeline"
         entityId={notesProspect?.id ?? null}
@@ -694,8 +706,7 @@ export default function SalesPipeline() {
             <select name="status" value={form.status} onChange={handleField}>
               <option value="contacted">Contacted</option>
               <option value="call_booked">Call Booked</option>
-              <option value="call_done">Call Done</option>
-              <option value="contract_sent">Contract Sent</option>
+              <option value="contract_summary_sent">Contract Summary Sent</option>
             </select>
           </div>
 

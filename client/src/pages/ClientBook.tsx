@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent, type ChangeEvent } from 'react'
+import { Fragment, useState, useEffect, useCallback, type FormEvent, type ChangeEvent } from 'react'
 import api from '../lib/api'
 import type { Client } from '../lib/types'
 import StatsBar from '../components/StatsBar'
@@ -286,7 +286,8 @@ export default function ClientBook() {
                   ? (client.website.startsWith('http') ? client.website : `https://${client.website}`)
                   : null
                 return (
-                  <tr key={client.id}>
+                  <Fragment key={client.id}>
+                  <tr className={client.latest_note_text ? 'has-sub-note' : ''}>
                     <td className="td-company-name">
                       {websiteHref ? (
                         <a href={websiteHref} target="_blank" rel="noopener noreferrer" className="client-link">
@@ -321,6 +322,20 @@ export default function ClientBook() {
                       <button className="btn-delete" onClick={() => setDeleteTarget(client)}>Delete</button>
                     </td>
                   </tr>
+                  {client.latest_note_text && (
+                    <tr className="note-sub-row">
+                      <td colSpan={8}>
+                        <div className="note-sub-row-inner">
+                          <span className="note-sub-row-icon">N</span>
+                          <span className="note-sub-row-date">
+                            {new Date(client.latest_note_date!.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                          <span className="note-sub-row-text">{client.latest_note_text}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -414,7 +429,7 @@ export default function ClientBook() {
 
       <NotesPanel
         isOpen={notesPanelClient !== null}
-        onClose={() => setNotesPanelClient(null)}
+        onClose={() => { setNotesPanelClient(null); fetchData() }}
         title={`${notesPanelClient?.name ?? ''} - Notes`}
         entityType="client"
         entityId={notesPanelClient?.id ?? null}
