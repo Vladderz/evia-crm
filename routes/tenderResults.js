@@ -19,6 +19,7 @@ function normaliseBody(b) {
     position: b.position === '' || b.position == null ? null : b.position,
     submitted_date: b.submitted_date || null,
     notes: b.notes || null,
+    tender_url: b.tender_url ? String(b.tender_url).trim() || null : null,
   };
 }
 
@@ -51,8 +52,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO tender_results
         (tender_name, client_name, contracting_authority, estimated_budget, our_price,
          bids_received, winning_price, quality_price_weighting, outcome, position,
-         submitted_date, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         submitted_date, notes, tender_url, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         data.tender_name,
@@ -67,6 +68,7 @@ router.post('/', async (req, res) => {
         data.position,
         data.submitted_date,
         data.notes,
+        data.tender_url,
         createdBy,
       ]
     );
@@ -98,8 +100,9 @@ router.put('/:id', async (req, res) => {
          position = $10,
          submitted_date = $11,
          notes = $12,
+         tender_url = $13,
          updated_at = NOW()
-       WHERE id = $13
+       WHERE id = $14
        RETURNING *`,
       [
         data.tender_name,
@@ -114,6 +117,7 @@ router.put('/:id', async (req, res) => {
         data.position,
         data.submitted_date,
         data.notes,
+        data.tender_url,
         req.params.id,
       ]
     );

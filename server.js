@@ -96,6 +96,9 @@ async function checkTenderResultsTable() {
   updated_at TIMESTAMP DEFAULT NOW()
 );`;
       console.log('[tender_results] Table not found. Run this SQL on the database to create it:\n' + sql);
+    } else {
+      // Idempotent column additions for incremental schema changes
+      await pool.query(`ALTER TABLE tender_results ADD COLUMN IF NOT EXISTS tender_url VARCHAR(500)`);
     }
   } catch (err) {
     console.error('[tender_results] Startup table check failed:', err.message);

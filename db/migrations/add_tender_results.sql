@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS tender_results (
   position INTEGER,
   submitted_date DATE,
   notes TEXT,
+  tender_url VARCHAR(500),
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()

@@ -21,6 +21,7 @@ interface TenderResult {
   position: number | null
   submitted_date: string | null
   notes: string | null
+  tender_url: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -39,6 +40,7 @@ interface FormState {
   position: string
   submitted_date: string
   notes: string
+  tender_url: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -54,6 +56,7 @@ const EMPTY_FORM: FormState = {
   position: '',
   submitted_date: '',
   notes: '',
+  tender_url: '',
 }
 
 const WEIGHTING_OPTIONS = ['100/0', '90/10', '80/20', '70/30', '60/40', '50/50']
@@ -167,6 +170,7 @@ export default function ResultsTracker() {
       position: r.position != null ? String(r.position) : '',
       submitted_date: r.submitted_date ? r.submitted_date.slice(0, 10) : '',
       notes: r.notes ?? '',
+      tender_url: r.tender_url ?? '',
     })
     setFormError(null)
     setModalOpen(true)
@@ -201,6 +205,7 @@ export default function ResultsTracker() {
       position: form.position === '' ? null : parseInt(form.position, 10),
       submitted_date: form.submitted_date || null,
       notes: form.notes.trim() || null,
+      tender_url: form.tender_url.trim() || null,
     }
     try {
       if (editingId) {
@@ -287,7 +292,21 @@ export default function ResultsTracker() {
                         <span className={`notes-toggle-chevron${expanded ? ' expanded' : ''}`}>&#9656;</span>
                       </td>
                       <td className="td-tender-title">
-                        <div style={{ fontWeight: 600 }}>{r.tender_name}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {r.tender_url ? (
+                            <a
+                              href={r.tender_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              style={{ color: 'inherit', textDecoration: 'none' }}
+                            >
+                              {r.tender_name}
+                            </a>
+                          ) : (
+                            r.tender_name
+                          )}
+                        </div>
                         {r.client_name && (
                           <div style={{ color: '#9CA3AF', fontSize: 12, marginTop: 2 }}>
                             {r.client_name}
@@ -368,6 +387,15 @@ export default function ResultsTracker() {
                     value={form.tender_name}
                     onChange={e => update('tender_name', e.target.value)}
                     autoFocus
+                  />
+                </div>
+                <div className="form-group form-full">
+                  <label>Tender URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={form.tender_url}
+                    onChange={e => update('tender_url', e.target.value)}
                   />
                 </div>
                 <div className="form-group">
