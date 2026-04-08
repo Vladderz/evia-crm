@@ -10,6 +10,7 @@ const pool = require('./db/pool');
 const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const tenderRoutes = require('./routes/tenders');
+const tenderResultsRoutes = require('./routes/tenderResults');
 const activityRoutes = require('./routes/activity');
 const pipelineRoutes = require('./routes/pipeline');
 const requireAuth = require('./middleware/requireAuth');
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 // Protected API routes
 app.use('/api/clients', requireAuth, clientRoutes);
 app.use('/api/tenders', requireAuth, tenderRoutes);
+app.use('/api/tender-results', requireAuth, tenderResultsRoutes);
 app.use('/api/activity', requireAuth, activityRoutes);
 app.use('/api/prospected', requireAuth, require('./routes/prospected'));
 app.use('/api/pipeline', requireAuth, pipelineRoutes);
@@ -69,6 +71,38 @@ if (isProd) {
   });
 }
 
+async function checkTenderResultsTable() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT to_regclass('public.tender_results') AS exists`
+    );
+    if (!rows[0] || !rows[0].exists) {
+      const sql = `CREATE TABLE IF NOT EXISTS tender_results (
+  id SERIAL PRIMARY KEY,
+  tender_name VARCHAR(255) NOT NULL,
+  client_name VARCHAR(255),
+  contracting_authority VARCHAR(255),
+  estimated_budget NUMERIC(12,2),
+  our_price NUMERIC(12,2),
+  bids_received INTEGER,
+  winning_price NUMERIC(12,2),
+  quality_price_weighting VARCHAR(10),
+  outcome VARCHAR(20) CHECK (outcome IN ('Won', 'Lost', 'Awaiting')) DEFAULT 'Awaiting',
+  position INTEGER,
+  submitted_date DATE,
+  notes TEXT,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);`;
+      console.log('[tender_results] Table not found. Run this SQL on the database to create it:\n' + sql);
+    }
+  } catch (err) {
+    console.error('[tender_results] Startup table check failed:', err.message);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`Evia CRM server running on port ${PORT}`);
+  checkTenderResultsTable();
 });

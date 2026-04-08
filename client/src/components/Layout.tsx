@@ -27,6 +27,9 @@ export default function Layout() {
           <NavLink to="/prospected" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Contracts Prospected
           </NavLink>
+          <NavLink to="/results" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Results Tracker
+          </NavLink>
         </div>
         <div className="navbar-user">
           <span className="user-name">{user?.name}</span>

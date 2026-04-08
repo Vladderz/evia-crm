@@ -8,6 +8,7 @@ import ActiveTenders from './pages/ActiveTenders'
 import ClientBook from './pages/ClientBook'
 import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
+import ResultsTracker from './pages/ResultsTracker'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="clients" element={<ClientBook />} />
             <Route path="pipeline" element={<SalesPipeline />} />
             <Route path="prospected" element={<ContractsProspected />} />
+            <Route path="results" element={<ResultsTracker />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

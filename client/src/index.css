@@ -2076,3 +2076,71 @@ body {
 .has-sub-note td {
   border-bottom: none !important;
 }
+
+/* ================================================================
+   RESULTS TRACKER PAGE
+   ================================================================ */
+
+.page-results {
+  max-width: 1400px;
+}
+
+/* Results tracker - outcome badges */
+.badge-won { background: #D1FAE5; color: #065F46; }
+.badge-lost { background: #FEE2E2; color: #991B1B; }
+.badge-awaiting { background: #FEF3C7; color: #92400E; }
+
+/* Results tracker - discount cell */
+.discount-negative { color: #EF4444; font-weight: 500; }
+.discount-positive { color: #16A34A; font-weight: 500; }
+
+/* Results tracker - expandable notes row */
+.notes-toggle-chevron {
+  transition: transform 0.2s ease;
+  cursor: pointer;
+  display: inline-block;
+  color: #6B7280;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+.notes-toggle-chevron.expanded {
+  transform: rotate(90deg);
+}
+.expanded-notes-row td {
+  background: #F9FAFB;
+  padding: 16px 24px;
+  white-space: pre-wrap;
+  border-top: none;
+}
+.expanded-notes-placeholder {
+  color: #9CA3AF;
+  font-style: italic;
+}
+
+/* Results tracker - row clickable */
+.results-table tbody tr.result-row {
+  cursor: pointer;
+}
+.results-table .td-chevron {
+  width: 28px;
+  padding-right: 0;
+}
+
+/* Results tracker - form modal (wider variant of dialog) */
+.dialog.dialog-form {
+  max-width: 640px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 28px 32px;
+}
+.dialog-form .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.dialog-form .form-grid .form-group { margin-bottom: 0; }
+.dialog-form .form-grid .form-full { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .dialog-form .form-grid { grid-template-columns: 1fr; }
+}
