@@ -28,6 +28,7 @@ interface PipelineStats {
   contacted: number
   call_booked: number
   contract_summary_sent: number
+  agreed: number
   overdue_followups: number
 }
 
@@ -90,7 +91,7 @@ export default function SalesPipeline() {
 
   const [prospects, setProspects] = useState<PipelineProspect[]>([])
   const [stats, setStats] = useState<PipelineStats>({
-    total: 0, contacted: 0, call_booked: 0, contract_summary_sent: 0, overdue_followups: 0,
+    total: 0, contacted: 0, call_booked: 0, contract_summary_sent: 0, agreed: 0, overdue_followups: 0,
   })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -117,6 +118,8 @@ export default function SalesPipeline() {
   // Confirm dialogs
   const [dropTarget, setDropTarget] = useState<PipelineProspect | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PipelineProspect | null>(null)
+  const [promoteTarget, setPromoteTarget] = useState<PipelineProspect | null>(null)
+  const [pushing, setPushing] = useState(false)
 
   // Debounce search
   useEffect(() => {
@@ -305,27 +308,38 @@ export default function SalesPipeline() {
     try {
       const res = await api.post(`/pipeline/${prospect.id}/advance`)
       const updated: PipelineProspect = res.data
-
-      if (updated.status === 'agreed') {
-        // Auto-promote to Client Book and Active Tenders
-        try {
-          await api.post(`/pipeline/${prospect.id}/promote`)
-          setProspects(prev => prev.filter(p => p.id !== prospect.id))
-          fetchStats()
-          toast.success(`${prospect.company_name} promoted to Client Book and Active Tenders`)
-        } catch {
-          // Promote failed - keep the row at 'agreed' so user can retry
-          setProspects(prev => prev.map(p => p.id === prospect.id ? updated : p))
-          fetchStats()
-          toast.error('Prospect marked as Agreed but promote failed. Please try again.')
-        }
-      } else {
-        setProspects(prev => prev.map(p => p.id === prospect.id ? updated : p))
-        fetchStats()
-        toast.success(`Status updated to ${STATUS_LABELS[updated.status] ?? updated.status}`)
-      }
+      setProspects(prev => prev.map(p => p.id === prospect.id ? updated : p))
+      fetchStats()
+      toast.success(`Status updated to ${STATUS_LABELS[updated.status] ?? updated.status}`)
     } catch {
       toast.error('Failed to advance status')
+    }
+  }
+
+  async function handlePromoteConfirm() {
+    if (!promoteTarget || pushing) return
+    setPushing(true)
+    try {
+      await api.post(`/pipeline/${promoteTarget.id}/promote`)
+      const name = promoteTarget.company_name
+      setPromoteTarget(null)
+      setProspects(prev => prev.filter(p => p.id !== promoteTarget.id))
+      fetchStats()
+      // Close slide panel if open
+      if (panelOpen && editingProspect?.id === promoteTarget.id) {
+        setPanelOpen(false)
+      }
+      toast.success(`${name} pushed to Active Tenders`)
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      if (status === 400) {
+        toast.error(message || 'Prospect must be at agreed status to promote')
+      } else {
+        toast.error('Something went wrong. Please try again.')
+      }
+    } finally {
+      setPushing(false)
     }
   }
 
@@ -367,6 +381,7 @@ export default function SalesPipeline() {
     { label: 'Contacted', value: stats.contacted },
     { label: 'Call Booked', value: stats.call_booked },
     { label: 'Summary Sent', value: stats.contract_summary_sent },
+    { label: 'Agreed', value: stats.agreed },
     {
       label: 'Overdue Follow-ups',
       value: stats.overdue_followups,
@@ -389,7 +404,7 @@ export default function SalesPipeline() {
 
   return (
     <div className="page-pipeline">
-      <StatsBar stats={statItems} className="stats-bar-5" />
+      <StatsBar stats={statItems} className="stats-bar-6" />
 
       {/* Toolbar */}
       <div className="toolbar">
@@ -410,6 +425,7 @@ export default function SalesPipeline() {
             <option value="contacted">Contacted</option>
             <option value="call_booked">Call Booked</option>
             <option value="contract_summary_sent">Contract Summary Sent</option>
+            <option value="agreed">Agreed</option>
           </select>
           <select
             className="toolbar-select"
@@ -453,7 +469,7 @@ export default function SalesPipeline() {
                 const isTBC = prospect.company_name === 'TBC'
                 return (
                   <Fragment key={prospect.id}>
-                  <tr className={prospect.latest_note_text ? 'has-sub-note' : ''}>
+                  <tr className={`${prospect.latest_note_text ? 'has-sub-note' : ''} ${prospect.status === 'agreed' ? 'row-agreed' : ''}`}>
                     <td className="td-pipeline-company">
                       {isTBC ? (
                         <span className="company-tbc">{prospect.company_name}</span>
@@ -510,7 +526,15 @@ export default function SalesPipeline() {
                     </td>
                     <td>{prospect.assigned_to ?? ''}</td>
                     <td className="td-pipeline-actions">
-                      {ADVANCE_LABELS[prospect.status] && (
+                      {prospect.status === 'agreed' ? (
+                        <button
+                          className="btn-push-active"
+                          type="button"
+                          onClick={() => setPromoteTarget(prospect)}
+                        >
+                          Push to Active &rsaquo;
+                        </button>
+                      ) : ADVANCE_LABELS[prospect.status] ? (
                         <button
                           className="btn-pipeline-advance"
                           type="button"
@@ -518,7 +542,7 @@ export default function SalesPipeline() {
                         >
                           {ADVANCE_LABELS[prospect.status]}
                         </button>
-                      )}
+                      ) : null}
                       <button
                         className="btn-pipeline-notes"
                         type="button"
@@ -585,6 +609,15 @@ export default function SalesPipeline() {
         onClose={() => { if (!saving) setPanelOpen(false) }}
         title={editingProspect ? 'Edit Prospect' : 'Add Prospect'}
       >
+        {editingProspect?.status === 'agreed' && (
+          <button
+            type="button"
+            className="btn-push-active btn-push-active-panel"
+            onClick={() => setPromoteTarget(editingProspect)}
+          >
+            Push to Active &rsaquo;
+          </button>
+        )}
         <form onSubmit={handleSave} noValidate>
           <div className="form-section-heading">PROSPECT DETAILS</div>
 
@@ -771,6 +804,23 @@ export default function SalesPipeline() {
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Promote confirmation */}
+      <ConfirmDialog
+        open={promoteTarget !== null}
+        title="Push to Active Tenders"
+        message={
+          promoteTarget
+            ? `This will create ${promoteTarget.company_name} as an active client and move ${promoteTarget.tender_title || 'this tender'} to Active Tenders. The prospect will be removed from the Sales Pipeline.`
+            : ''
+        }
+        confirmLabel="Push to Active"
+        confirmClassName="btn btn-push-active"
+        loading={pushing}
+        loadingLabel="Pushing..."
+        onConfirm={handlePromoteConfirm}
+        onCancel={() => { if (!pushing) setPromoteTarget(null) }}
       />
     </div>
   )

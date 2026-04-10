@@ -34,10 +34,11 @@ router.get('/stats', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE status NOT IN ('agreed', 'not_interested')) as total,
+        COUNT(*) FILTER (WHERE status NOT IN ('not_interested')) as total,
         COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
         COUNT(*) FILTER (WHERE status = 'call_booked') as call_booked,
         COUNT(*) FILTER (WHERE status = 'contract_summary_sent') as contract_summary_sent,
+        COUNT(*) FILTER (WHERE status = 'agreed') as agreed,
         COUNT(*) FILTER (WHERE next_followup_date <= CURRENT_DATE AND status NOT IN ('agreed', 'not_interested')) as overdue_followups
       FROM sales_pipeline
     `);
@@ -47,6 +48,7 @@ router.get('/stats', async (req, res) => {
       contacted: parseInt(row.contacted) || 0,
       call_booked: parseInt(row.call_booked) || 0,
       contract_summary_sent: parseInt(row.contract_summary_sent) || 0,
+      agreed: parseInt(row.agreed) || 0,
       overdue_followups: parseInt(row.overdue_followups) || 0,
     });
   } catch (err) {
@@ -138,7 +140,7 @@ router.get('/', async (req, res) => {
         ORDER BY created_at DESC
         LIMIT 1
       ) latest_note ON true
-      WHERE sp.status NOT IN ('agreed', 'not_interested')
+      WHERE sp.status NOT IN ('not_interested')
     `;
     const params = [];
     if (status) {
