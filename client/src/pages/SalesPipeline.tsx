@@ -740,6 +740,7 @@ export default function SalesPipeline() {
               <option value="contacted">Contacted</option>
               <option value="call_booked">Call Booked</option>
               <option value="contract_summary_sent">Contract Summary Sent</option>
+              <option value="agreed">Agreed</option>
             </select>
           </div>
 
