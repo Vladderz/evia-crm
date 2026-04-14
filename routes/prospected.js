@@ -144,10 +144,16 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // Check for duplicate URL
-    const existing = await pool.query('SELECT id FROM prospected_contracts WHERE url = $1', [url]);
+    // Check for duplicate URL across all users
+    const existing = await pool.query(
+      `SELECT pc.id, u.name AS added_by_name
+       FROM prospected_contracts pc
+       JOIN users u ON pc.added_by = u.id
+       WHERE pc.url = $1`,
+      [url]
+    );
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'This URL has already been added.' });
+      return res.status(409).json({ error: `This contract has already been added by ${existing.rows[0].added_by_name}` });
     }
 
     const result = await pool.query(
