@@ -196,8 +196,9 @@ export default function ContractsProspected() {
       fetchData()
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       if (status === 409) {
-        toast.error('This URL has already been added.')
+        toast.error(message || 'This URL has already been added.')
       } else {
         toast.error('Failed to add contract. Please try again.')
       }
