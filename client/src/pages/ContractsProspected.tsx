@@ -68,6 +68,7 @@ export default function ContractsProspected() {
 
   const [urlInput, setUrlInput] = useState('')
   const [extracting, setExtracting] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelTitle, setPanelTitle] = useState('Add Contract')
@@ -134,6 +135,7 @@ export default function ContractsProspected() {
   }
 
   async function handleAdd() {
+    setDuplicateError(null)
     const trimmed = urlInput.trim()
 
     if (!trimmed) {
@@ -192,13 +194,22 @@ export default function ContractsProspected() {
       })
       toast.success('Contract added')
       setUrlInput('')
+      setDuplicateError(null)
       setPanelOpen(false)
       fetchData()
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      const response = (err as { response?: { status?: number; data?: { error?: string; existing?: { added_by_name?: string; created_at?: string; stage?: string } } } })?.response
+      const status = response?.status
       if (status === 409) {
-        toast.error(message || 'This URL has already been added.')
+        const ex = response?.data?.existing
+        const who = ex?.added_by_name || 'another user'
+        const when = ex?.created_at ? formatDate(ex.created_at) : null
+        const stage = ex?.stage || 'Contracts Prospected'
+        const msg = when
+          ? `Already added by ${who} on ${when} (${stage}).`
+          : `Already added by ${who} (${stage}).`
+        setDuplicateError(msg)
+        setPanelOpen(false)
       } else {
         toast.error('Failed to add contract. Please try again.')
       }
@@ -278,7 +289,7 @@ export default function ContractsProspected() {
           className="url-input"
           placeholder="Paste a Find a Tender URL or add manually..."
           value={urlInput}
-          onChange={e => setUrlInput(e.target.value)}
+          onChange={e => { setUrlInput(e.target.value); setDuplicateError(null) }}
           onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
         />
         <button
@@ -290,6 +301,11 @@ export default function ContractsProspected() {
           {extracting ? 'Loading...' : 'Add'}
         </button>
       </div>
+      {duplicateError && (
+        <div className="duplicate-error-banner" role="alert">
+          {duplicateError}
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="toolbar" style={{ marginBottom: '24px' }}>

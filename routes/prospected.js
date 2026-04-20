@@ -144,23 +144,49 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // Check for duplicate URL across all users
-    const existing = await pool.query(
-      `SELECT pc.id, u.name AS added_by_name
-       FROM prospected_contracts pc
-       JOIN users u ON pc.added_by = u.id
-       WHERE pc.url = $1`,
-      [url]
-    );
+    // Parse the FTS notice id from the URL path. This is the stable dedup
+    // key — the same notice can be pasted with different query strings and
+    // still resolve to the same notice_id.
+    const noticeMatch = url.match(/\/Notice\/([^/?#]+)/i);
+    const noticeId = noticeMatch ? noticeMatch[1] : null;
+
+    // Primary check: notice_id if we could parse one. Fallback: exact URL
+    // match, which catches legacy rows and any edge cases where parsing
+    // fails (non-FTS URLs, manual entries).
+    const existing = noticeId
+      ? await pool.query(
+          `SELECT pc.id, pc.created_at, u.name AS added_by_name
+           FROM prospected_contracts pc
+           JOIN users u ON pc.added_by = u.id
+           WHERE pc.notice_id = $1`,
+          [noticeId]
+        )
+      : await pool.query(
+          `SELECT pc.id, pc.created_at, u.name AS added_by_name
+           FROM prospected_contracts pc
+           JOIN users u ON pc.added_by = u.id
+           WHERE pc.url = $1`,
+          [url]
+        );
+
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: `This contract has already been added by ${existing.rows[0].added_by_name}` });
+      const row = existing.rows[0];
+      return res.status(409).json({
+        error: `This contract has already been added by ${row.added_by_name}`,
+        existing: {
+          id: row.id,
+          added_by_name: row.added_by_name,
+          created_at: row.created_at,
+          stage: 'Contracts Prospected',
+        },
+      });
     }
 
     const result = await pool.query(
-      `INSERT INTO prospected_contracts (title, url, submission_deadline, source, ocds_id, added_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO prospected_contracts (title, url, submission_deadline, source, ocds_id, notice_id, added_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [title, url, submission_deadline, source || 'manual', ocds_id || null, req.session.userId]
+      [title, url, submission_deadline, source || 'manual', ocds_id || null, noticeId, req.session.userId]
     );
     const contract = result.rows[0];
 
