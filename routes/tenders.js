@@ -231,19 +231,26 @@ router.post('/', async (req, res) => {
   const {
     client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
     portal, reference_number, sector, tender_url, status,
-    assigned_to, notes,
+    assigned_to, notes, awaiting_info, awaiting_info_note,
   } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
 
+  // awaiting_info only meaningful when status === 'writing'; force false
+  // and clear the note otherwise so the column never carries stale data.
+  const isWriting = (status || 'questionnaire_sent') === 'writing';
+  const awaitingInfoVal = isWriting ? !!awaiting_info : false;
+  const awaitingNoteVal = isWriting ? (awaiting_info_note || null) : null;
+
   try {
     const result = await pool.query(
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
-         reference_number, sector, tender_url, status, assigned_to, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         reference_number, sector, tender_url, status, assigned_to, notes, created_by,
+         awaiting_info, awaiting_info_note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         client_id || null,
@@ -261,6 +268,8 @@ router.post('/', async (req, res) => {
         assigned_to || null,
         notes || null,
         req.session.userId,
+        awaitingInfoVal,
+        awaitingNoteVal,
       ]
     );
     const tender = result.rows[0];
@@ -308,6 +317,19 @@ router.put('/:id', async (req, res) => {
     const assignedTo         = 'assigned_to'         in b ? (b.assigned_to || null)        : prev.assigned_to;
     const notes              = 'notes'               in b ? (b.notes || null)              : prev.notes;
 
+    // awaiting_info: only meaningful when status === 'writing'; if the
+    // status moves elsewhere, flush the flag and the note so we don't
+    // surface stale "Awaiting Info" badges on Won/Lost/Submitted rows.
+    let awaitingInfo;
+    let awaitingInfoNote;
+    if (status !== 'writing') {
+      awaitingInfo = false;
+      awaitingInfoNote = null;
+    } else {
+      awaitingInfo     = 'awaiting_info'      in b ? !!b.awaiting_info       : (prev.awaiting_info ?? false);
+      awaitingInfoNote = 'awaiting_info_note' in b ? (b.awaiting_info_note || null) : (prev.awaiting_info_note ?? null);
+    }
+
     const result = await pool.query(
       `UPDATE tenders SET
         client_id           = $1,
@@ -323,10 +345,12 @@ router.put('/:id', async (req, res) => {
         tender_url          = $11,
         status              = $12,
         assigned_to         = $13,
-        notes               = $14
-       WHERE id = $15
+        notes               = $14,
+        awaiting_info       = $15,
+        awaiting_info_note  = $16
+       WHERE id = $17
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, req.params.id]
     );
 
     const tender = result.rows[0];

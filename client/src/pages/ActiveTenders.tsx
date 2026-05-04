@@ -1,499 +1,756 @@
-import { Fragment, useState, useEffect, useCallback } from 'react'
-import api from '../lib/api'
-import type { Client, Tender } from '../lib/types'
-import { useAuth } from '../context/AuthContext'
-import { useToast } from '../components/ToastProvider'
-import StatsBar from '../components/StatsBar'
-import ViewToggle from '../components/ViewToggle'
-import TenderCard from '../components/TenderCard'
-import TenderForm from '../components/TenderForm'
-import SlidePanel from '../components/SlidePanel'
-import NotesPanel from '../components/NotesPanel'
-import ConfirmDialog from '../components/ConfirmDialog'
-import LoadingSpinner from '../components/LoadingSpinner'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  formatDate,
-  getDeadlineCountdown,
+  Banknote,
+  Check,
+  FileText,
+  Pencil,
+  Plus,
+  Send,
+  StickyNote,
+  Target,
+  Trophy,
+} from 'lucide-react';
+import api from '../lib/api';
+import type { Client, Tender } from '../lib/types';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
+import { PageHeader } from '../components/PageHeader/PageHeader';
+import { KPITile } from '../components/KPITile/KPITile';
+import { StageTabs } from '../components/StageTabs/StageTabs';
+import { FilterBar } from '../components/FilterBar/FilterBar';
+import {
+  DataTable,
+  TruncatedText,
+  type Column,
+} from '../components/DataTable/DataTable';
+import { Badge, type BadgeVariant } from '../components/Badge/Badge';
+import { Button } from '../components/Button/Button';
+import { Avatar } from '../components/Avatar/Avatar';
+import { Select } from '../components/Select/Select';
+import {
+  TenderDrawer,
+  type TenderClientOption,
+  type TenderFormValues,
+  type TenderStatus,
+} from '../components/TenderDrawer/TenderDrawer';
+import NotesPanel from '../components/NotesPanel';
+import ConfirmDialog from '../components/ConfirmDialog';
+import {
   formatCurrency,
+  formatDate,
+  formatRelativeDays,
   getStatusLabel,
-  getStatusColor,
-} from '../lib/tenderUtils'
+} from '../lib/format';
 
-interface TenderStats {
-  active: number
-  submitted: number
-  pipeline_value: number
-  won_value: number
-  won_fees: number
-  won_count: number
-  lost_count: number
+/* -----------------------------------------------------------------
+ * Status -> Badge mapping
+ * ----------------------------------------------------------------- */
+
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  writing: 'warning',
+  submitted: 'info',
+  questionnaire_sent: 'neutral',
+  won: 'success',
+  lost: 'danger',
+  archived: 'neutral',
+};
+
+const STATUS_HAS_DOT: Record<string, boolean> = {
+  writing: true,
+  submitted: true,
+  questionnaire_sent: true,
+  won: false,
+  lost: false,
+  archived: false,
+};
+
+const STAGE_TABS: { key: string; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'writing', label: 'Writing' },
+  { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'won', label: 'Won' },
+  { key: 'lost', label: 'Lost' },
+];
+
+/* -----------------------------------------------------------------
+ * Map server Tender shape to TenderDrawer's form values
+ * ----------------------------------------------------------------- */
+
+function tenderToForm(t: Tender): Partial<TenderFormValues> {
+  return {
+    title: t.title,
+    tender_url: t.tender_url ?? '',
+    buyer: t.buyer ?? '',
+    estimated_value: t.estimated_value != null ? String(t.estimated_value) : '',
+    evia_fee: t.evia_fee != null ? String(Math.round(t.evia_fee)) : '',
+    submission_deadline: t.submission_deadline ? t.submission_deadline.slice(0, 16) : '',
+    award_date: t.award_date ? t.award_date.slice(0, 10) : '',
+    portal: t.portal ?? '',
+    reference_number: t.reference_number ?? '',
+    sector: t.sector ?? '',
+    client_id: t.client_id != null ? String(t.client_id) : '',
+    status: t.status as TenderStatus,
+    awaiting_info: t.awaiting_info ?? false,
+    awaiting_info_note: t.awaiting_info_note ?? '',
+    assigned_to: t.assigned_to ?? '',
+    notes: t.notes ?? '',
+  };
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  questionnaire_sent: 'Questionnaire Sent',
-  writing: 'Writing',
-  submitted: 'Submitted / Awaiting Result',
+/* -----------------------------------------------------------------
+ * Cell renderers
+ * ----------------------------------------------------------------- */
+
+function TenderCell({ row }: { row: Tender }) {
+  return (
+    <div className="dt-cell-2line">
+      <span className="dt-cell-primary">
+        <TruncatedText>{row.title}</TruncatedText>
+      </span>
+      {row.reference_number && (
+        <span className="dt-cell-secondary">{row.reference_number}</span>
+      )}
+    </div>
+  );
 }
 
-function fmtCurrency(n: number): string {
-  return '£' + Math.round(n).toLocaleString('en-GB')
+function StatusCell({ row }: { row: Tender }) {
+  const showAwaiting = row.status === 'writing' && row.awaiting_info === true;
+  const awaitingTooltip = row.awaiting_info_note?.trim() || 'Waiting on client input';
+  return (
+    <div className="status-stack">
+      <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
+        {getStatusLabel(row.status)}
+      </Badge>
+      {showAwaiting && (
+        <span title={awaitingTooltip}>
+          <Badge variant="warning" withDot>Awaiting Info</Badge>
+        </span>
+      )}
+    </div>
+  );
 }
+
+function ValueCell({ value }: { value: number | null | undefined }) {
+  if (value == null) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  return <>{formatCurrency(value)}</>;
+}
+
+function AwardCell({ row }: { row: Tender }) {
+  if (!row.award_date) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  const rel = formatRelativeDays(row.award_date);
+  if (!rel?.tone) {
+    return <span style={{ whiteSpace: 'nowrap' }}>{formatDate(row.award_date)}</span>;
+  }
+  return (
+    <div className="dt-date-2line">
+      <span>{formatDate(row.award_date)}</span>
+      <span className={`dt-date-suffix dt-date-suffix-${rel.tone}`}>{rel.label}</span>
+    </div>
+  );
+}
+
+function SubmissionCell({ row }: { row: Tender }) {
+  if (!row.submission_deadline) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  return <>{formatDate(row.submission_deadline)}</>;
+}
+
+function AssignedCell({ row }: { row: Tender }) {
+  if (!row.assigned_to) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <Avatar name={row.assigned_to} />
+      <span style={{ fontSize: 13 }}>{row.assigned_to}</span>
+    </span>
+  );
+}
+
+interface ActionsCellProps {
+  row: Tender;
+  onEdit: (t: Tender) => void;
+  onNotes: (t: Tender) => void;
+  onAdvance: (t: Tender, status: string) => void;
+}
+
+function ActionsCell({ row, onEdit, onNotes, onAdvance }: ActionsCellProps) {
+  const showMarkWon = row.status === 'submitted';
+  return (
+    <span className="dt-actions" onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        className="dt-action dt-action-ghost"
+        onClick={() => onNotes(row)}
+      >
+        <StickyNote size={12} aria-hidden /> Notes
+      </button>
+      {showMarkWon ? (
+        <button
+          type="button"
+          className="dt-action dt-action-primary"
+          onClick={() => onAdvance(row, 'won')}
+        >
+          <Check size={12} aria-hidden /> Mark Won
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="dt-action dt-action-ghost"
+          onClick={() => onEdit(row)}
+        >
+          <Pencil size={12} aria-hidden /> Edit
+        </button>
+      )}
+    </span>
+  );
+}
+
+/* -----------------------------------------------------------------
+ * Expand panel
+ * ----------------------------------------------------------------- */
+
+function ExpandPanel({
+  row,
+  onEdit,
+  onNotes,
+  onAdvance,
+}: {
+  row: Tender;
+  onEdit: (t: Tender) => void;
+  onNotes: (t: Tender) => void;
+  onAdvance: (t: Tender, status: string) => void;
+}) {
+  const advanceTarget: { label: string; status: string } | null =
+    row.status === 'questionnaire_sent'
+      ? { label: 'Move to Writing', status: 'writing' }
+      : row.status === 'writing'
+        ? { label: 'Move to Submitted', status: 'submitted' }
+        : row.status === 'submitted'
+          ? { label: 'Mark Won', status: 'won' }
+          : null;
+
+  return (
+    <div className="dt-expand-grid">
+      <div>
+        <div className="dt-expand-section-title">Latest note</div>
+        {row.latest_note_text ? (
+          <div className="dt-expand-note" style={{ borderBottom: 'none' }}>
+            <div className="dt-expand-note-meta">
+              {row.latest_note_date && formatDate(row.latest_note_date)}
+            </div>
+            {row.latest_note_text}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            No notes yet.
+          </p>
+        )}
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="dt-action dt-action-link"
+            onClick={() => onNotes(row)}
+          >
+            View all notes
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div className="dt-expand-section-title">Details</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+          {row.buyer && (
+            <div>
+              <span style={{ color: 'var(--text-tertiary)' }}>Buyer: </span>
+              <span style={{ color: 'var(--text-secondary-v1)' }}>{row.buyer}</span>
+            </div>
+          )}
+          {row.portal && (
+            <div>
+              <span style={{ color: 'var(--text-tertiary)' }}>Portal: </span>
+              <span style={{ color: 'var(--text-secondary-v1)' }}>{row.portal}</span>
+            </div>
+          )}
+          {row.sector && (
+            <div>
+              <span style={{ color: 'var(--text-tertiary)' }}>Sector: </span>
+              <span style={{ color: 'var(--text-secondary-v1)' }}>{row.sector}</span>
+            </div>
+          )}
+          {row.client_name && (
+            <div>
+              <span style={{ color: 'var(--text-tertiary)' }}>Client: </span>
+              <span style={{ color: 'var(--text-secondary-v1)' }}>{row.client_name}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="dt-expand-section-title">Quick Actions</div>
+        <div className="dt-expand-actions">
+          {advanceTarget && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={advanceTarget.status === 'won' ? Check : Send}
+              onClick={() => onAdvance(row, advanceTarget.status)}
+            >
+              {advanceTarget.label}
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
+            Edit tender
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={StickyNote}
+            onClick={() => onNotes(row)}
+          >
+            Add note
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -----------------------------------------------------------------
+ * Page
+ * ----------------------------------------------------------------- */
 
 export default function ActiveTenders() {
-  const { user } = useAuth()
-  const toast = useToast()
+  const { user } = useAuth();
+  const toast = useToast();
 
-  const [viewIndex, setViewIndex] = useState(0) // 0 = Live Pipeline, 1 = Results
-  const [liveTenders, setLiveTenders] = useState<Tender[]>([])
-  const [resultsTenders, setResultsTenders] = useState<Tender[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [stats, setStats] = useState<TenderStats>({
-    active: 0, submitted: 0, pipeline_value: 0, won_value: 0, won_fees: 0, won_count: 0, lost_count: 0,
-  })
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
+  const [tenders, setTenders] = useState<Tender[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  // Live Pipeline filters
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [assignedFilter, setAssignedFilter] = useState('')
+  /* Filters */
+  const [stage, setStage] = useState<string>('writing');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [assigned, setAssigned] = useState<string | undefined>(undefined);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Results filters
-  const [resultFilter, setResultFilter] = useState('')
+  /* Drawer */
+  const [drawerInitial, setDrawerInitial] = useState<
+    Partial<TenderFormValues> | null | undefined
+  >(undefined);
+  const [editingTenderId, setEditingTenderId] = useState<number | null>(null);
+  const drawerOpen = drawerInitial !== undefined;
 
-  // Panel
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [editingTender, setEditingTender] = useState<Tender | null>(null)
-  const [formKey, setFormKey] = useState(0)
+  /* Notes panel + delete */
+  const [notesPanelTender, setNotesPanelTender] = useState<{
+    id: number;
+    title: string;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null);
 
-  // Notes panel
-  const [notesPanelTender, setNotesPanelTender] = useState<{ id: number; title: string } | null>(null)
-
-  // Delete
-  const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null)
-
-  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchData = useCallback(async () => {
-    setLoadError(false)
+    setLoadError(false);
     try {
-      const [liveRes, resultsRes, statsRes, clientsRes] = await Promise.all([
-        api.get('/tenders?view=live'),
-        api.get('/tenders?view=results'),
-        api.get('/tenders/stats'),
+      const [tendersRes, clientsRes] = await Promise.all([
+        api.get('/tenders'),
         api.get('/clients'),
-      ])
-      setLiveTenders(liveRes.data)
-      setResultsTenders(resultsRes.data)
-      setStats(statsRes.data)
+      ]);
+      setTenders(tendersRes.data);
       setClients(
         (clientsRes.data as Client[]).sort((a, b) =>
-          a.company_name.localeCompare(b.company_name)
-        )
-      )
+          a.company_name.localeCompare(b.company_name),
+        ),
+      );
     } catch {
-      setLoadError(true)
+      setLoadError(true);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  // Filtered live tenders
-  const visibleLive = liveTenders.filter(t => {
-    if (statusFilter && t.status !== statusFilter) return false
-    if (assignedFilter && t.assigned_to !== assignedFilter) return false
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase()
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.buyer ?? '').toLowerCase().includes(q) ||
-        (t.client_name ?? '').toLowerCase().includes(q)
-      )
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {
+      all: 0,
+      writing: 0,
+      questionnaire_sent: 0,
+      submitted: 0,
+      won: 0,
+      lost: 0,
+    };
+    for (const t of tenders) {
+      c[t.status] = (c[t.status] ?? 0) + 1;
+      if (t.status !== 'won' && t.status !== 'lost' && t.status !== 'archived') {
+        c.all = (c.all ?? 0) + 1;
+      }
     }
-    return true
-  })
+    return c;
+  }, [tenders]);
 
-  // Filtered results tenders
-  const visibleResults = resultsTenders.filter(t => {
-    if (resultFilter && t.status !== resultFilter) return false
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase()
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.buyer ?? '').toLowerCase().includes(q) ||
-        (t.client_name ?? '').toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
+  const stats = useMemo(() => {
+    const won = tenders.filter(t => t.status === 'won');
+    const lost = tenders.filter(t => t.status === 'lost');
+    const decided = won.length + lost.length;
+    return {
+      active: counts.all ?? 0,
+      submitted: counts.submitted ?? 0,
+      wonValue: won.reduce((s, t) => s + (t.estimated_value ?? 0), 0),
+      wonFees: won.reduce((s, t) => s + (t.evia_fee ?? 0), 0),
+      wonCount: won.length,
+      decided,
+      winRate: decided > 0 ? Math.round((won.length / decided) * 100) : 0,
+    };
+  }, [tenders, counts]);
+
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    return tenders.filter(t => {
+      if (stage === 'all') {
+        if (t.status === 'won' || t.status === 'lost' || t.status === 'archived') {
+          return false;
+        }
+      } else if (t.status !== stage) {
+        return false;
+      }
+      if (assigned && t.assigned_to !== assigned) return false;
+      if (q) {
+        const hay = `${t.title} ${t.client_name ?? ''} ${t.reference_number ?? ''} ${t.buyer ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tenders, stage, debouncedSearch, assigned]);
+
+  const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
+
+  /* ------------- Handlers ------------- */
+
+  function clearFilters() {
+    setSearch('');
+    setAssigned(undefined);
+  }
+
+  function toggleExpand(row: Tender) {
+    const id = String(row.id);
+    setExpandedId(curr => (curr === id ? null : id));
+  }
 
   function openAdd() {
-    setNotesPanelTender(null)
-    setEditingTender(null)
-    setFormKey(k => k + 1)
-    setPanelOpen(true)
+    setEditingTenderId(null);
+    setDrawerInitial(null);
   }
 
-  function openEdit(tender: Tender) {
-    setNotesPanelTender(null)
-    setEditingTender(tender)
-    setFormKey(k => k + 1)
-    setPanelOpen(true)
+  function openEdit(t: Tender) {
+    setEditingTenderId(t.id);
+    setDrawerInitial(tenderToForm(t));
   }
 
-  function openNotes(tender: { id: number; title: string }) {
-    setPanelOpen(false)
-    setNotesPanelTender(tender)
+  function closeDrawer() {
+    setDrawerInitial(undefined);
+    setEditingTenderId(null);
   }
 
-  function handleViewChange(index: number) {
-    setViewIndex(index)
-    setSearch('')
-    setDebouncedSearch('')
+  function openNotes(t: { id: number; title: string }) {
+    setNotesPanelTender({ id: t.id, title: t.title });
   }
 
-  async function handleAdvance(tender: Tender, newStatus: string) {
+  async function handleAdvance(t: Tender, newStatus: string) {
     try {
-      await api.put(`/tenders/${tender.id}`, { status: newStatus })
-      toast.success(`Moved to ${STATUS_LABELS[newStatus] ?? newStatus}`)
-      fetchData()
+      await api.put(`/tenders/${t.id}`, { status: newStatus });
+      const label = newStatus === 'won' ? 'Won' : newStatus === 'lost' ? 'Lost' : getStatusLabel(newStatus);
+      toast.success(`Moved to ${label}`);
+      fetchData();
     } catch {
-      toast.error('Failed to update status. Please try again.')
+      toast.error('Failed to update status. Please try again.');
+    }
+  }
+
+  async function handleSave(values: TenderFormValues) {
+    const payload: Record<string, unknown> = {
+      client_id: values.client_id ? parseInt(values.client_id, 10) : null,
+      title: values.title.trim(),
+      buyer: values.buyer || null,
+      estimated_value: values.estimated_value ? parseFloat(values.estimated_value) : null,
+      evia_fee: values.evia_fee ? parseFloat(values.evia_fee) : null,
+      submission_deadline: values.submission_deadline || null,
+      award_date: values.award_date || null,
+      portal: values.portal || null,
+      reference_number: values.reference_number || null,
+      sector: values.sector || null,
+      tender_url: values.tender_url || null,
+      status: values.status,
+      assigned_to: values.assigned_to || null,
+      notes: values.notes || null,
+      awaiting_info: values.awaiting_info,
+      awaiting_info_note: values.awaiting_info_note || null,
+    };
+    try {
+      if (editingTenderId !== null) {
+        await api.put(`/tenders/${editingTenderId}`, payload);
+        toast.success('Tender updated');
+      } else {
+        await api.post('/tenders', payload);
+        toast.success('Tender added');
+      }
+      closeDrawer();
+      fetchData();
+    } catch {
+      toast.error(
+        editingTenderId !== null
+          ? 'Failed to update tender. Please try again.'
+          : 'Failed to add tender. Please try again.',
+      );
     }
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
-    const title = deleteTarget.title
+    if (!deleteTarget) return;
+    const title = deleteTarget.title;
     try {
-      await api.delete(`/tenders/${deleteTarget.id}`)
-      toast.success(`${title} deleted`)
-      setDeleteTarget(null)
-      fetchData()
+      await api.delete(`/tenders/${deleteTarget.id}`);
+      toast.success(`${title} deleted`);
+      setDeleteTarget(null);
+      fetchData();
     } catch {
-      toast.error('Failed to delete tender. Please try again.')
-      setDeleteTarget(null)
+      toast.error('Failed to delete tender. Please try again.');
+      setDeleteTarget(null);
     }
   }
 
-  const totalDecided = stats.won_count + stats.lost_count
-  const winRateDisplay = totalDecided > 0
-    ? `${stats.won_count} of ${totalDecided} (${Math.round((stats.won_count / totalDecided) * 100)}%)`
-    : '-'
+  /* ------------- Render ------------- */
 
-  const statItems = [
-    { label: 'Active Tenders', value: stats.active },
-    { label: 'Submitted', value: stats.submitted },
-    { label: 'Pipeline Value', value: fmtCurrency(stats.pipeline_value) },
-    { label: 'Won Value', value: fmtCurrency(stats.won_value) },
-    { label: 'Won Fees', value: fmtCurrency(stats.won_fees) },
-    { label: 'Win Rate', value: winRateDisplay },
-  ]
+  const filtersActive = !!search || !!assigned;
+  const clientOptions: TenderClientOption[] = clients.map(c => ({
+    id: c.id,
+    name: c.company_name,
+  }));
 
-  if (loading) {
-    return <LoadingSpinner message="Loading tenders..." />
-  }
-
-  if (loadError) {
-    return (
-      <div className="page-error">
-        <p>Something went wrong loading tenders. Please try again.</p>
-        <button className="btn btn-primary" onClick={fetchData}>Retry</button>
-      </div>
-    )
-  }
-
-  const isLive = viewIndex === 0
+  const columns: Column<Tender>[] = [
+    {
+      key: 'tender',
+      header: 'Tender',
+      width: 'flex',
+      maxWidth: 360,
+      render: row => <TenderCell row={row} />,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 160,
+      render: row => <StatusCell row={row} />,
+    },
+    {
+      key: 'client',
+      header: 'Client',
+      width: 160,
+      maxWidth: 160,
+      render: row =>
+        row.client_name ? (
+          <TruncatedText>{row.client_name}</TruncatedText>
+        ) : (
+          <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+            No client
+          </span>
+        ),
+    },
+    {
+      key: 'value',
+      header: 'Value',
+      width: 100,
+      align: 'right',
+      mono: true,
+      render: row => <ValueCell value={row.estimated_value} />,
+    },
+    {
+      key: 'fee',
+      header: 'Fee',
+      width: 90,
+      align: 'right',
+      mono: true,
+      render: row => <ValueCell value={row.evia_fee} />,
+    },
+    {
+      key: 'submission',
+      header: 'Submission',
+      width: 110,
+      align: 'right',
+      mono: true,
+      render: row => <SubmissionCell row={row} />,
+    },
+    {
+      key: 'award',
+      header: 'Award',
+      width: 110,
+      align: 'right',
+      mono: true,
+      render: row => <AwardCell row={row} />,
+    },
+    {
+      key: 'assigned',
+      header: 'Assigned',
+      width: 100,
+      render: row => <AssignedCell row={row} />,
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 170,
+      align: 'right',
+      render: row => (
+        <ActionsCell
+          row={row}
+          onEdit={openEdit}
+          onNotes={t => openNotes({ id: t.id, title: t.title })}
+          onAdvance={handleAdvance}
+        />
+      ),
+    },
+  ];
 
   return (
-    <div className="page-tenders">
-      <StatsBar stats={statItems} className="stats-bar-6" />
-
-      <ViewToggle
-        options={['Live Pipeline', 'Results']}
-        activeIndex={viewIndex}
-        onChange={handleViewChange}
+    <>
+      <PageHeader
+        title="Active Tenders"
+        description="Track tenders through writing, submission, and outcomes"
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openAdd}>
+            Add Tender
+          </Button>
+        }
       />
 
-      {/* Toolbar */}
-      <div className="toolbar">
-        <div className="toolbar-filters">
-          <input
-            type="search"
-            className="toolbar-search"
-            placeholder="Search tenders..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {isLive ? (
-            <>
-              <select
-                className="toolbar-select"
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-              >
-                <option value="">All Live</option>
-                <option value="questionnaire_sent">Questionnaire Sent</option>
-                <option value="writing">Writing</option>
-                <option value="submitted">Submitted / Awaiting Result</option>
-              </select>
-              <select
-                className="toolbar-select"
-                value={assignedFilter}
-                onChange={e => setAssignedFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="Vlad">Vlad</option>
-                <option value="Tristan">Tristan</option>
-                <option value="Both">Both</option>
-              </select>
-            </>
-          ) : (
-            <select
-              className="toolbar-select"
-              value={resultFilter}
-              onChange={e => setResultFilter(e.target.value)}
-            >
-              <option value="">All Results</option>
-              <option value="won">Won</option>
-              <option value="lost">Lost</option>
-            </select>
-          )}
-        </div>
-        {isLive && (
-          <button className="btn btn-primary" onClick={openAdd}>+ Add Tender</button>
-        )}
+      <div className="kpi-row">
+        <KPITile
+          label="Active Tenders"
+          value={loading ? 0 : stats.active}
+          icon={FileText}
+          tone="brand"
+          loading={loading}
+        />
+        <KPITile
+          label="Submitted"
+          value={loading ? 0 : stats.submitted}
+          icon={Send}
+          tone="info"
+          loading={loading}
+        />
+        <KPITile
+          label="Won Value"
+          value={formatCurrency(stats.wonValue)}
+          icon={Trophy}
+          tone="success"
+          mono
+          loading={loading}
+        />
+        <KPITile
+          label="Won Fees"
+          value={formatCurrency(stats.wonFees)}
+          icon={Banknote}
+          tone="success"
+          mono
+          loading={loading}
+        />
+        <KPITile
+          label="Win Rate"
+          value={
+            stats.decided > 0
+              ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
+              : '0 of 0 (0%)'
+          }
+          icon={Target}
+          tone="warning"
+          loading={loading}
+        />
       </div>
 
-      {/* Live Pipeline table */}
-      {isLive ? (
-        visibleLive.length === 0 ? (
-          <div className="empty-state">
-            {liveTenders.length === 0 ? (
-              <>
-                <p>No active tenders. Add your first tender to get started.</p>
-                <button
-                  className="btn btn-primary"
-                  onClick={openAdd}
-                  style={{ marginTop: '16px' }}
-                >
-                  + Add Tender
-                </button>
-              </>
-            ) : (
-              <p>No tenders match your search or filter.</p>
-            )}
-          </div>
-        ) : (
-          <div className="tenders-table-wrapper">
-            <table className="tenders-table">
-              <thead>
-                <tr>
-                  <th>Tender</th>
-                  <th>Status</th>
-                  <th>Submission Deadline</th>
-                  <th>Award Date</th>
-                  <th>Client</th>
-                  <th>Value</th>
-                  <th>Fee</th>
-                  <th>Assigned</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleLive.map(tender => {
-                  const countdown = getDeadlineCountdown(tender.submission_deadline)
-                  const awardCountdown = getDeadlineCountdown(tender.award_date)
-                  return (
-                    <Fragment key={tender.id}>
-                    <tr className={tender.latest_note_text ? 'has-sub-note' : ''}>
-                      <td className="td-tender-title">
-                        {tender.tender_url ? (
-                          <a href={tender.tender_url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
-                            {tender.title}
-                          </a>
-                        ) : (
-                          tender.title
-                        )}
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusColor(tender.status)}`}>
-                          {getStatusLabel(tender.status)}
-                        </span>
-                      </td>
-                      <td>
-                        {tender.submission_deadline ? (
-                          <>
-                            {formatDate(tender.submission_deadline)}{' '}
-                            {countdown.colorClass && countdown.text !== 'Overdue' ? (
-                              <span className={countdown.colorClass}>({countdown.text})</span>
-                            ) : null}
-                          </>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {tender.award_date ? (
-                          <>
-                            {formatDate(tender.award_date)}{' '}
-                            {awardCountdown.colorClass ? (
-                              <span className={awardCountdown.colorClass}>({awardCountdown.text})</span>
-                            ) : null}
-                          </>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {tender.client_name ? (
-                          tender.client_name
-                        ) : (
-                          <span style={{ color: '#9CA3AF', fontStyle: 'italic' }}>No client</span>
-                        )}
-                      </td>
-                      <td>{formatCurrency(tender.estimated_value)}</td>
-                      <td>{formatCurrency(tender.evia_fee)}</td>
-                      <td>{tender.assigned_to ?? ''}</td>
-                      <td className="td-actions">
-                        <button
-                          className="btn-edit"
-                          type="button"
-                          onClick={() => openNotes({ id: tender.id, title: tender.title })}
-                        >
-                          Notes
-                        </button>
-                        {tender.status === 'questionnaire_sent' && (
-                          <button
-                            className="btn-advance"
-                            type="button"
-                            onClick={() => handleAdvance(tender, 'writing')}
-                          >
-                            Move to Writing
-                          </button>
-                        )}
-                        {tender.status === 'writing' && (
-                          <button
-                            className="btn-advance"
-                            type="button"
-                            onClick={() => handleAdvance(tender, 'submitted')}
-                          >
-                            Move to Submitted
-                          </button>
-                        )}
-                        {tender.status === 'submitted' && (
-                          <>
-                            <button
-                              className="btn-advance"
-                              type="button"
-                              onClick={() => handleAdvance(tender, 'won')}
-                            >
-                              Mark Won
-                            </button>
-                            <button
-                              className="btn-mark-lost"
-                              type="button"
-                              onClick={() => handleAdvance(tender, 'lost')}
-                            >
-                              Mark Lost
-                            </button>
-                          </>
-                        )}
-                        <button
-                          className="btn-edit"
-                          type="button"
-                          onClick={() => openEdit(tender)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn-delete"
-                          type="button"
-                          onClick={() => setDeleteTarget(tender)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                    {tender.latest_note_text && (
-                      <tr className="note-sub-row">
-                        <td colSpan={9}>
-                          <div className="note-sub-row-inner">
-                            <span className="note-sub-row-icon">N</span>
-                            <span className="note-sub-row-date">
-                              {new Date(tender.latest_note_date!.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                            </span>
-                            <span className="note-sub-row-text">{tender.latest_note_text}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : (
-        visibleResults.length === 0 ? (
-          <div className="empty-state">
-            {resultsTenders.length === 0 ? (
-              <p>No results yet. Tenders will appear here once marked as Won or Lost.</p>
-            ) : (
-              <p>No tenders match your search or filter.</p>
-            )}
-          </div>
-        ) : (
-          <div className="tenders-grid">
-            {visibleResults.map(tender => (
-              <TenderCard
-                key={tender.id}
-                tender={tender}
-                view="results"
-                onEdit={openEdit}
-                onDelete={setDeleteTarget}
-                onAdvance={handleAdvance}
-                onNotes={t => openNotes({ id: t.id, title: t.title })}
-              />
-            ))}
-          </div>
-        )
-      )}
+      <StageTabs tabs={tabsWithCount} activeKey={stage} onChange={setStage} />
 
-      {/* Add / Edit panel */}
-      <SlidePanel
-        open={panelOpen}
-        onClose={() => setPanelOpen(false)}
-        title={editingTender ? `Edit ${editingTender.title}` : 'Add Tender'}
-      >
-        <TenderForm
-          key={formKey}
-          tender={editingTender}
-          clients={clients}
-          currentUserName={user?.name ?? ''}
-          onSuccess={() => { fetchData(); setPanelOpen(false) }}
-          onClose={() => setPanelOpen(false)}
+      <FilterBar variant="attached">
+        <FilterBar.Search
+          value={search}
+          onChange={setSearch}
+          placeholder="Search tenders, clients, refs..."
         />
-      </SlidePanel>
+        <Select
+          value={assigned ?? 'all'}
+          onValueChange={v => setAssigned(v === 'all' ? undefined : v)}
+          placeholder="All Assigned"
+          width={160}
+          ariaLabel="Filter by assignee"
+          options={[
+            { value: 'all', label: 'All Assigned' },
+            { value: 'Vlad', label: 'Vlad' },
+            { value: 'Tristan', label: 'Tristan' },
+            { value: 'Both', label: 'Both' },
+          ]}
+        />
+        {filtersActive && <FilterBar.Clear onClick={clearFilters} />}
+      </FilterBar>
 
-      {/* Notes panel */}
+      <DataTable<Tender>
+        columns={columns}
+        data={filtered}
+        rowKey={r => String(r.id)}
+        variant="attached"
+        ariaLabel="Active tenders"
+        isLoading={loading}
+        isError={loadError}
+        errorMessage="Couldn't load tenders"
+        onRetry={fetchData}
+        onRowClick={toggleExpand}
+        expandedRow={{
+          rowId: expandedId,
+          render: row => (
+            <ExpandPanel
+              row={row}
+              onEdit={openEdit}
+              onNotes={t => openNotes({ id: t.id, title: t.title })}
+              onAdvance={handleAdvance}
+            />
+          ),
+        }}
+        emptyState={{
+          message:
+            tenders.length === 0
+              ? 'Your first tender awaits'
+              : 'No tenders match these filters',
+          action:
+            tenders.length === 0
+              ? { label: 'Add Tender', onClick: openAdd }
+              : { label: 'Clear filters', onClick: clearFilters },
+        }}
+      />
+
+      <TenderDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        initial={drawerInitial ?? null}
+        clients={clientOptions}
+        defaultAssignee={user?.name ?? ''}
+        onSave={handleSave}
+      />
+
       <NotesPanel
         isOpen={notesPanelTender !== null}
-        onClose={() => { setNotesPanelTender(null); fetchData() }}
+        onClose={() => {
+          setNotesPanelTender(null);
+          fetchData();
+        }}
         title={`${notesPanelTender?.title ?? ''} - Notes`}
         entityType="tender"
         entityId={notesPanelTender?.id ?? null}
       />
 
-      {/* Delete confirmation */}
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete Tender"
@@ -506,6 +763,6 @@ export default function ActiveTenders() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
-  )
+    </>
+  );
 }

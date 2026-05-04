@@ -372,20 +372,20 @@ function buildColumns(onEdit: (row: MockTender) => void): Column<MockTender>[] {
     {
       key: 'status',
       header: 'Status',
-      width: 150,
+      width: 160,
       render: row => <StatusCell row={row} />,
     },
     {
       key: 'client',
       header: 'Client',
-      width: 150,
-      maxWidth: 150,
+      width: 160,
+      maxWidth: 160,
       render: row => <TruncatedText>{row.client}</TruncatedText>,
     },
     {
       key: 'value',
       header: 'Value',
-      width: 110,
+      width: 100,
       align: 'right',
       mono: true,
       render: row => <ValueCell value={row.value} />,
@@ -401,7 +401,7 @@ function buildColumns(onEdit: (row: MockTender) => void): Column<MockTender>[] {
     {
       key: 'submission',
       header: 'Submission',
-      width: 100,
+      width: 110,
       align: 'right',
       mono: true,
       render: row => formatDate(row.submission_deadline),
@@ -409,7 +409,7 @@ function buildColumns(onEdit: (row: MockTender) => void): Column<MockTender>[] {
     {
       key: 'award',
       header: 'Award',
-      width: 130,
+      width: 110,
       align: 'right',
       mono: true,
       render: row => <AwardCell row={row} />,
@@ -423,7 +423,7 @@ function buildColumns(onEdit: (row: MockTender) => void): Column<MockTender>[] {
     {
       key: 'actions',
       header: '',
-      width: 180,
+      width: 170,
       align: 'right',
       render: row => <ActionsCell row={row} onEdit={onEdit} />,
     },
