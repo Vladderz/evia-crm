@@ -1,14 +1,16 @@
 import { useState, type ReactNode } from 'react';
-import { Building2, FileText, Search, TrendingUp, Trophy } from 'lucide-react';
+import { Building2, FileText, PauseCircle, Search, TrendingUp, Trophy } from 'lucide-react';
 import { Sidebar, type SidebarNavItem, type SidebarUser } from '../Sidebar/Sidebar';
 import { TopBar } from '../TopBar/TopBar';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const DEFAULT_NAV_ITEMS: SidebarNavItem[] = [
   { key: 'tenders', to: '/', label: 'Active Tenders', icon: FileText },
   { key: 'pipeline', to: '/pipeline', label: 'Sales Pipeline', icon: TrendingUp },
   { key: 'clients', to: '/clients', label: 'Client Book', icon: Building2 },
   { key: 'prospected', to: '/prospected', label: 'Contracts Prospected', icon: Search },
   { key: 'results', to: '/results', label: 'Results Tracker', icon: Trophy },
+  { key: 'no_mans_land', to: '/no-mans-land', label: "No Man's Land", icon: PauseCircle },
 ];
 
 interface AppShellProps {

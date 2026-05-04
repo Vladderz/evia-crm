@@ -145,3 +145,30 @@ export function getStatusLabelLong(status: string | null | undefined): string {
   if (!status) return '';
   return TENDER_STATUS_LABELS_LONG[status] ?? status;
 }
+
+/* ------------------------------------------------------------------
+ * Drop reason labels
+ * ------------------------------------------------------------------ */
+
+const DROP_REASON_LABELS: Record<string, string> = {
+  not_interested:  'Not interested in this tender',
+  went_with_other: 'Went with another bid writer',
+  price_concern:   'Price / fee concern',
+  ghosted:         'Ghosted / no response',
+  timing:          'Timing wrong',
+  other:           'Other',
+};
+
+export const DROP_REASON_OPTIONS = [
+  { value: 'not_interested',  label: DROP_REASON_LABELS.not_interested! },
+  { value: 'went_with_other', label: DROP_REASON_LABELS.went_with_other! },
+  { value: 'price_concern',   label: DROP_REASON_LABELS.price_concern! },
+  { value: 'ghosted',         label: DROP_REASON_LABELS.ghosted! },
+  { value: 'timing',          label: DROP_REASON_LABELS.timing! },
+  { value: 'other',           label: DROP_REASON_LABELS.other! },
+];
+
+export function getDropReasonLabel(reason: string | null | undefined): string {
+  if (!reason) return '';
+  return DROP_REASON_LABELS[reason] ?? reason;
+}

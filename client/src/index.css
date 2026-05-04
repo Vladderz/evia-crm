@@ -3989,6 +3989,69 @@ textarea.field-control {
 }
 
 /* ================================================================
+   RE-ENGAGE DIALOG OPTION (radio-style stacked button)
+   ================================================================ */
+
+.reengage-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all var(--transition-base);
+}
+.reengage-option:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  background: var(--surface-warm);
+}
+.reengage-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.reengage-option-checked {
+  border-color: var(--brand-primary);
+  background: var(--brand-subtle);
+  box-shadow: 0 0 0 3px rgba(129, 118, 178, 0.15);
+}
+.reengage-radio {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  margin-top: 1px;
+  background: var(--surface-card);
+  transition: all var(--transition-base);
+}
+.reengage-radio-checked {
+  border-color: var(--brand-primary);
+  background:
+    radial-gradient(circle, var(--brand-primary) 0 4px, transparent 5px);
+}
+
+/* Slate-toned ghost action button - used for Drop, distinct from
+   the brand-tinted hover of regular ghost actions. */
+.dt-action-drop {
+  background: transparent;
+  color: var(--text-secondary-v1);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-color: var(--border-default);
+}
+.dt-action-drop:hover {
+  background: var(--surface-muted);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+/* ================================================================
    LEGACY COMPONENTS RESTYLED (ConfirmDialog + ToastProvider use
    these classes - retune to new visual language without changing
    the component code)

@@ -15,6 +15,19 @@ async function logActivity(userId, action, entityType, entityId, details) {
   }
 }
 
+const DROP_REASONS = [
+  'not_interested', 'went_with_other', 'price_concern',
+  'ghosted', 'timing', 'other',
+];
+const DROP_REASON_LABELS = {
+  not_interested:  'Not interested in this tender',
+  went_with_other: 'Went with another bid writer',
+  price_concern:   'Price / fee concern',
+  ghosted:         'Ghosted / no response',
+  timing:          'Timing wrong',
+  other:           'Other',
+};
+
 async function runAutoArchive(userId) {
   try {
     const result = await pool.query(
@@ -22,6 +35,7 @@ async function runAutoArchive(userId) {
        SET status = 'archived'
        WHERE status = 'submitted'
          AND submission_deadline < NOW() - INTERVAL '90 days'
+         AND dropped_at IS NULL
        RETURNING id, title`
     );
     for (const row of result.rows) {
@@ -40,13 +54,13 @@ router.get('/stats', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted'))::int AS active,
-        COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted,
-        COALESCE(SUM(estimated_value) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted')), 0) AS pipeline_value,
-        COALESCE(SUM(estimated_value) FILTER (WHERE status = 'won'), 0) AS won_value,
-        COALESCE(SUM(evia_fee) FILTER (WHERE status = 'won'), 0) AS won_fees,
-        COUNT(*) FILTER (WHERE status = 'won')::int AS won_count,
-        COUNT(*) FILTER (WHERE status = 'lost')::int AS lost_count
+        COUNT(*) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted') AND dropped_at IS NULL)::int AS active,
+        COUNT(*) FILTER (WHERE status = 'submitted' AND dropped_at IS NULL)::int AS submitted,
+        COALESCE(SUM(estimated_value) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted') AND dropped_at IS NULL), 0) AS pipeline_value,
+        COALESCE(SUM(estimated_value) FILTER (WHERE status = 'won' AND dropped_at IS NULL), 0) AS won_value,
+        COALESCE(SUM(evia_fee) FILTER (WHERE status = 'won' AND dropped_at IS NULL), 0) AS won_fees,
+        COUNT(*) FILTER (WHERE status = 'won' AND dropped_at IS NULL)::int AS won_count,
+        COUNT(*) FILTER (WHERE status = 'lost' AND dropped_at IS NULL)::int AS lost_count
       FROM tenders
     `);
     const row = result.rows[0];
@@ -140,6 +154,106 @@ router.post('/:id/notes', async (req, res) => {
   }
 });
 
+// POST /api/tenders/:id/drop
+// Move a tender into No Man's Land. Sets dropped_at + drop_reason +
+// drop_note. Status is preserved as the "stage when dropped". Lost
+// tenders can also be dropped (rare but valid: client pulled out
+// after we lost). The badge UI excludes archived from the row list.
+router.post('/:id/drop', async (req, res) => {
+  const { reason, note } = req.body || {};
+  if (!DROP_REASONS.includes(reason)) {
+    return res.status(400).json({ error: 'Invalid drop reason' });
+  }
+  try {
+    const current = await pool.query('SELECT * FROM tenders WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Tender not found' });
+    const tender = current.rows[0];
+    if (tender.dropped_at) {
+      return res.status(400).json({ error: 'Tender is already dropped' });
+    }
+
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+    const result = await pool.query(
+      `UPDATE tenders SET
+        dropped_at = NOW(),
+        drop_reason = $1,
+        drop_note = $2
+       WHERE id = $3
+       RETURNING *`,
+      [reason, trimmedNote || null, req.params.id]
+    );
+
+    const reasonLabel = DROP_REASON_LABELS[reason] || reason;
+    const systemNote = trimmedNote
+      ? `Dropped to No Man's Land: ${reasonLabel}. ${trimmedNote}`
+      : `Dropped to No Man's Land: ${reasonLabel}.`;
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [tender.id, systemNote, req.session.userId]
+    );
+
+    await logActivity(req.session.userId, 'dropped tender', 'tender', tender.id, {
+      title: tender.title,
+      stage_when_dropped: tender.status,
+      reason,
+      note: trimmedNote || null,
+    });
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Drop tender error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/tenders/:id/re-engage
+// Pull a tender out of No Man's Land back to Writing. drop_reason and
+// drop_note are kept on the row as historical.
+router.post('/:id/re-engage', async (req, res) => {
+  try {
+    const current = await pool.query('SELECT * FROM tenders WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Tender not found' });
+    const tender = current.rows[0];
+    if (!tender.dropped_at) {
+      return res.status(400).json({ error: 'Tender is not dropped' });
+    }
+
+    const result = await pool.query(
+      `UPDATE tenders SET
+        dropped_at = NULL,
+        status = 'writing',
+        awaiting_info = FALSE,
+        awaiting_info_note = NULL
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    const reasonLabel = DROP_REASON_LABELS[tender.drop_reason] || tender.drop_reason || 'unknown';
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [
+        tender.id,
+        `Re-engaged on ${today} from No Man's Land. Original drop reason: ${reasonLabel}.`,
+        req.session.userId,
+      ]
+    );
+
+    await logActivity(req.session.userId, 're-engaged tender', 'tender', tender.id, {
+      title: tender.title,
+      original_drop_reason: tender.drop_reason,
+    });
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Re-engage tender error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/tenders
 router.get('/', async (req, res) => {
   const { view } = req.query;
@@ -171,6 +285,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status IN ('questionnaire_sent', 'writing', 'submitted')
+          AND t.dropped_at IS NULL
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;
     } else if (view === 'results') {
@@ -182,6 +297,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status IN ('won', 'lost')
+          AND t.dropped_at IS NULL
         ORDER BY t.updated_at DESC
       `;
     } else {
@@ -193,6 +309,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status NOT IN ('archived', 'prospecting')
+          AND t.dropped_at IS NULL
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;
     }

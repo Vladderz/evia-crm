@@ -11,7 +11,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { Client, Tender } from '../lib/types';
+import type { Client, Tender, DropReason } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -33,6 +33,7 @@ import {
   type TenderFormValues,
   type TenderStatus,
 } from '../components/TenderDrawer/TenderDrawer';
+import { DropDialog } from '../components/DropDialog/DropDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -171,9 +172,10 @@ interface ActionsCellProps {
   onEdit: (t: Tender) => void;
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
+  onDrop: (t: Tender) => void;
 }
 
-function ActionsCell({ row, onEdit, onNotes, onAdvance }: ActionsCellProps) {
+function ActionsCell({ row, onEdit, onNotes, onAdvance, onDrop }: ActionsCellProps) {
   const showMarkWon = row.status === 'submitted';
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
@@ -201,6 +203,13 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance }: ActionsCellProps) {
           <Pencil size={12} aria-hidden /> Edit
         </button>
       )}
+      <button
+        type="button"
+        className="dt-action dt-action-drop"
+        onClick={() => onDrop(row)}
+      >
+        Drop
+      </button>
     </span>
   );
 }
@@ -343,12 +352,13 @@ export default function ActiveTenders() {
   const [editingTenderId, setEditingTenderId] = useState<number | null>(null);
   const drawerOpen = drawerInitial !== undefined;
 
-  /* Notes panel + delete */
+  /* Notes panel + delete + drop */
   const [notesPanelTender, setNotesPanelTender] = useState<{
     id: number;
     title: string;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null);
+  const [dropTarget, setDropTarget] = useState<Tender | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -513,6 +523,19 @@ export default function ActiveTenders() {
     }
   }
 
+  async function handleDropConfirm({ reason, note }: { reason: DropReason; note: string }) {
+    if (!dropTarget) return;
+    const target = dropTarget;
+    try {
+      await api.post(`/tenders/${target.id}/drop`, { reason, note });
+      toast.success(`${target.title} moved to No Man's Land`);
+      setDropTarget(null);
+      fetchData();
+    } catch {
+      toast.error('Failed to drop tender. Please try again.');
+    }
+  }
+
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;
     const title = deleteTarget.title;
@@ -604,7 +627,7 @@ export default function ActiveTenders() {
     {
       key: 'actions',
       header: '',
-      width: 170,
+      width: 220,
       align: 'right',
       render: row => (
         <ActionsCell
@@ -612,6 +635,7 @@ export default function ActiveTenders() {
           onEdit={openEdit}
           onNotes={t => openNotes({ id: t.id, title: t.title })}
           onAdvance={handleAdvance}
+          onDrop={t => setDropTarget(t)}
         />
       ),
     },
@@ -738,6 +762,14 @@ export default function ActiveTenders() {
         clients={clientOptions}
         defaultAssignee={user?.name ?? ''}
         onSave={handleSave}
+      />
+
+      <DropDialog
+        open={dropTarget !== null}
+        entityName={dropTarget?.title ?? ''}
+        entityKind="tender"
+        onClose={() => setDropTarget(null)}
+        onConfirm={handleDropConfirm}
       />
 
       <NotesPanel
