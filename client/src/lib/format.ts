@@ -113,8 +113,21 @@ export function formatRelativeDays(
  * Translates Tender enum values (snake_case in DB) to display labels.
  * Pipeline statuses are stored as display strings already and pass
  * through unchanged.
+ *
+ * getStatusLabel returns the short form used in badges and most UI
+ * surfaces. getStatusLabelLong returns the verbose form for detail
+ * views (per brief: "Submitted / Awaiting Result" only in detail).
  */
 const TENDER_STATUS_LABELS: Record<string, string> = {
+  questionnaire_sent: 'PSQ Stage',
+  writing: 'Writing',
+  submitted: 'Submitted',
+  won: 'Won',
+  lost: 'Lost',
+  archived: 'Archived',
+};
+
+const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
   questionnaire_sent: 'PSQ Stage',
   writing: 'Writing',
   submitted: 'Submitted / Awaiting Result',
@@ -126,4 +139,9 @@ const TENDER_STATUS_LABELS: Record<string, string> = {
 export function getStatusLabel(status: string | null | undefined): string {
   if (!status) return '';
   return TENDER_STATUS_LABELS[status] ?? status;
+}
+
+export function getStatusLabelLong(status: string | null | undefined): string {
+  if (!status) return '';
+  return TENDER_STATUS_LABELS_LONG[status] ?? status;
 }

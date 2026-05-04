@@ -1,5 +1,19 @@
-import { useState } from 'react';
-import { Check, Pencil, Send, StickyNote } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Briefcase,
+  Check,
+  FileText,
+  Pencil,
+  Plus,
+  Send,
+  StickyNote,
+  TrendingUp,
+} from 'lucide-react';
+import { AppShell } from '../components/AppShell/AppShell';
+import { PageHeader } from '../components/PageHeader/PageHeader';
+import { KPITile } from '../components/KPITile/KPITile';
+import { StageTabs } from '../components/StageTabs/StageTabs';
+import { FilterBar } from '../components/FilterBar/FilterBar';
 import {
   DataTable,
   TruncatedText,
@@ -8,6 +22,10 @@ import {
 import { Badge, type BadgeVariant } from '../components/Badge/Badge';
 import { Button } from '../components/Button/Button';
 import { Avatar } from '../components/Avatar/Avatar';
+import { Input } from '../components/Input/Input';
+import { Textarea } from '../components/Textarea/Textarea';
+import { Select } from '../components/Select/Select';
+import { Modal } from '../components/Modal/Modal';
 import {
   formatCurrency,
   formatDate,
@@ -16,9 +34,7 @@ import {
 } from '../lib/format';
 
 /* -----------------------------------------------------------------
- * Mock tender shape - mirrors a subset of the real Tender type so
- * the playground exercises the same column patterns the real page
- * will use.
+ * Mock data
  * ----------------------------------------------------------------- */
 
 interface MockTender {
@@ -147,7 +163,7 @@ const MOCK_TENDERS: MockTender[] = [
 ];
 
 /* -----------------------------------------------------------------
- * Status -> Badge variant mapping (mirrors brief section 5.1)
+ * Status -> Badge variant mapping (per brief)
  * ----------------------------------------------------------------- */
 const STATUS_VARIANT: Record<MockTender['status'], BadgeVariant> = {
   writing: 'warning',
@@ -155,6 +171,15 @@ const STATUS_VARIANT: Record<MockTender['status'], BadgeVariant> = {
   questionnaire_sent: 'neutral',
   won: 'success',
   lost: 'danger',
+};
+
+/** Stage chips show a leading dot; result chips (Won/Lost) do not. */
+const STATUS_HAS_DOT: Record<MockTender['status'], boolean> = {
+  writing: true,
+  submitted: true,
+  questionnaire_sent: true,
+  won: false,
+  lost: false,
 };
 
 const ASSIGNED_LABEL: Record<string, string> = {
@@ -179,7 +204,9 @@ function TenderCell({ row }: { row: MockTender }) {
 
 function StatusCell({ row }: { row: MockTender }) {
   return (
-    <Badge variant={STATUS_VARIANT[row.status]}>{getStatusLabel(row.status)}</Badge>
+    <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
+      {getStatusLabel(row.status)}
+    </Badge>
   );
 }
 
@@ -207,7 +234,7 @@ function AssignedCell({ row }: { row: MockTender }) {
   }
   const label = ASSIGNED_LABEL[row.assigned_to] ?? row.assigned_to;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       <Avatar name={label} />
       <span style={{ fontSize: 13 }}>{label}</span>
     </span>
@@ -235,7 +262,7 @@ function ActionsCell({ row }: { row: MockTender }) {
 }
 
 /* -----------------------------------------------------------------
- * Expand panel renderer (mock activity / notes / quick actions)
+ * Expand panel
  * ----------------------------------------------------------------- */
 
 function ExpandPanel({ row }: { row: MockTender }) {
@@ -300,7 +327,7 @@ function ExpandPanel({ row }: { row: MockTender }) {
 }
 
 /* -----------------------------------------------------------------
- * Column config (Active Tenders / Live Pipeline view)
+ * Columns
  * ----------------------------------------------------------------- */
 
 function buildColumns(): Column<MockTender>[] {
@@ -309,26 +336,26 @@ function buildColumns(): Column<MockTender>[] {
       key: 'tender',
       header: 'Tender',
       width: 'flex',
-      maxWidth: 320,
+      maxWidth: 360,
       render: row => <TenderCell row={row} />,
     },
     {
       key: 'status',
       header: 'Status',
-      width: 180,
+      width: 150,
       render: row => <StatusCell row={row} />,
     },
     {
       key: 'client',
       header: 'Client',
-      width: 120,
-      maxWidth: 120,
+      width: 150,
+      maxWidth: 150,
       render: row => <TruncatedText>{row.client}</TruncatedText>,
     },
     {
       key: 'value',
       header: 'Value',
-      width: 100,
+      width: 110,
       align: 'right',
       mono: true,
       render: row => <ValueCell value={row.value} />,
@@ -336,7 +363,7 @@ function buildColumns(): Column<MockTender>[] {
     {
       key: 'fee',
       header: 'Fee',
-      width: 80,
+      width: 90,
       align: 'right',
       mono: true,
       render: row => <ValueCell value={row.fee} />,
@@ -345,6 +372,7 @@ function buildColumns(): Column<MockTender>[] {
       key: 'submission',
       header: 'Submission',
       width: 100,
+      align: 'right',
       mono: true,
       render: row => formatDate(row.submission_deadline),
     },
@@ -352,13 +380,14 @@ function buildColumns(): Column<MockTender>[] {
       key: 'award',
       header: 'Award',
       width: 130,
+      align: 'right',
       mono: true,
       render: row => <AwardCell row={row} />,
     },
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 90,
+      width: 100,
       render: row => <AssignedCell row={row} />,
     },
     {
@@ -375,120 +404,266 @@ function buildColumns(): Column<MockTender>[] {
  * Page
  * ----------------------------------------------------------------- */
 
+const STAGE_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'writing', label: 'Writing' },
+  { key: 'questionnaire_sent', label: 'PSQ' },
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'won', label: 'Won' },
+  { key: 'lost', label: 'Lost' },
+];
+
 export default function Playground() {
-  const columns = buildColumns();
+  const columns = useMemo(buildColumns, []);
+  const [stage, setStage] = useState<string>('writing');
+  const [search, setSearch] = useState('');
+  const [assigned, setAssigned] = useState<string | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>('t1');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: 0 };
+    for (const t of MOCK_TENDERS) {
+      c.all = (c.all ?? 0) + 1;
+      c[t.status] = (c[t.status] ?? 0) + 1;
+    }
+    return c;
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return MOCK_TENDERS.filter(t => {
+      if (stage !== 'all' && t.status !== stage) return false;
+      if (assigned && t.assigned_to !== assigned) return false;
+      if (q) {
+        const hay = `${t.title} ${t.client} ${t.reference}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [stage, search, assigned]);
+
+  const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
+
+  function clearFilters() {
+    setSearch('');
+    setAssigned(undefined);
+  }
 
   function toggleExpand(row: MockTender) {
     setExpandedId(curr => (curr === row.id ? null : row.id));
   }
 
+  const filtersActive = !!search || !!assigned;
+
   return (
-    <div className="pg-page">
-      <div className="pg-container">
-        <header className="pg-header">
-          <h1 className="pg-title">Component Playground</h1>
-          <p className="pg-subtitle">
-            Dev-only sandbox for v1 design-system primitives. Mounted at /playground when
-            running Vite in development.
-          </p>
-        </header>
+    <AppShell
+      title="Active Tenders"
+      user={{ name: 'Vlad Lewis', onLogout: () => {} }}
+      sidebarActiveKey="tenders"
+    >
+      <PageHeader
+        title="Active Tenders"
+        description="Track tenders through writing, submission, and outcomes"
+        actions={
+          <Button variant="primary" icon={Plus}>Add Tender</Button>
+        }
+      />
 
-        <section className="pg-section">
-          <h2 className="pg-section-title">DataTable - populated</h2>
-          <p className="pg-section-note">
-            Active Tenders columns. Row 1 has a deliberately long title (truncation +
-            tooltip on hover) and is pre-expanded to demonstrate the row-expand panel.
-            Row 2 has an overdue award date, row 3 has a within-14-days countdown.
-          </p>
-          <DataTable<MockTender>
-            columns={columns}
-            data={MOCK_TENDERS}
-            rowKey={r => r.id}
-            ariaLabel="Active tenders demo"
-            onRowClick={toggleExpand}
-            expandedRow={{ rowId: expandedId, render: row => <ExpandPanel row={row} /> }}
-          />
-        </section>
-
-        <section className="pg-section">
-          <h2 className="pg-section-title">DataTable - loading</h2>
-          <DataTable<MockTender>
-            columns={columns}
-            data={[]}
-            rowKey={r => r.id}
-            isLoading
-            ariaLabel="Loading state demo"
-          />
-        </section>
-
-        <section className="pg-section">
-          <h2 className="pg-section-title">DataTable - empty</h2>
-          <DataTable<MockTender>
-            columns={columns}
-            data={[]}
-            rowKey={r => r.id}
-            ariaLabel="Empty state demo"
-            emptyState={{
-              message: 'No tenders match these filters',
-              action: { label: 'Clear filters', onClick: () => {} },
-            }}
-          />
-        </section>
-
-        <section className="pg-section">
-          <h2 className="pg-section-title">DataTable - error</h2>
-          <DataTable<MockTender>
-            columns={columns}
-            data={[]}
-            rowKey={r => r.id}
-            isError
-            errorMessage="Could not load tenders"
-            onRetry={() => {}}
-            ariaLabel="Error state demo"
-          />
-        </section>
-
-        <section className="pg-section">
-          <h2 className="pg-section-title">Badge variants</h2>
-          <div className="pg-row">
-            <Badge variant="success">Won</Badge>
-            <Badge variant="warning">Writing</Badge>
-            <Badge variant="danger">Lost</Badge>
-            <Badge variant="info">Submitted / Awaiting Result</Badge>
-            <Badge variant="brand">Summary Sent</Badge>
-            <Badge variant="neutral">PSQ Stage</Badge>
-          </div>
-          <div className="pg-row">
-            <Badge variant="success" size="md">Won</Badge>
-            <Badge variant="warning" size="md">Writing</Badge>
-            <Badge variant="danger" size="md">Lost</Badge>
-            <Badge variant="brand" size="md">Summary Sent</Badge>
-          </div>
-        </section>
-
-        <section className="pg-section">
-          <h2 className="pg-section-title">Button variants</h2>
-          <div className="pg-row">
-            <Button variant="primary">Primary</Button>
-            <Button variant="secondary">Secondary</Button>
-            <Button variant="ghost">Ghost</Button>
-            <Button variant="danger">Danger</Button>
-          </div>
-          <div className="pg-row">
-            <Button variant="primary" size="sm">Small</Button>
-            <Button variant="primary" size="md">Medium</Button>
-            <Button variant="primary" size="lg">Large</Button>
-          </div>
-          <div className="pg-row">
-            <Button variant="primary" icon={Check}>Mark Won</Button>
-            <Button variant="secondary" icon={Pencil}>Edit</Button>
-            <Button variant="primary" icon={Send} iconPosition="right">Send</Button>
-            <Button variant="primary" loading>Saving</Button>
-            <Button variant="primary" disabled>Disabled</Button>
-          </div>
-        </section>
+      <div className="kpi-row">
+        <KPITile label="Active Tenders" value={9} icon={FileText} tone="brand" />
+        <KPITile label="Submitted" value={2} icon={Send} tone="info" />
+        <KPITile
+          label="Pipeline Value"
+          value={formatCurrency(2193000)}
+          icon={TrendingUp}
+          tone="brand"
+          mono
+        />
+        <KPITile
+          label="Submitted Value"
+          value={formatCurrency(595000)}
+          icon={Briefcase}
+          tone="brand"
+          mono
+        />
       </div>
-    </div>
+
+      <StageTabs tabs={tabsWithCount} activeKey={stage} onChange={setStage} />
+
+      <FilterBar variant="attached">
+        <FilterBar.Search
+          value={search}
+          onChange={setSearch}
+          placeholder="Search tenders, clients, refs..."
+        />
+        <Select
+          value={assigned ?? 'all'}
+          onValueChange={v => setAssigned(v === 'all' ? undefined : v)}
+          placeholder="All Assigned"
+          width={160}
+          ariaLabel="Filter by assignee"
+          options={[
+            { value: 'all', label: 'All Assigned' },
+            { value: 'vlad', label: 'Vlad' },
+            { value: 'tristan', label: 'Tristan' },
+          ]}
+        />
+        {filtersActive && <FilterBar.Clear onClick={clearFilters} />}
+      </FilterBar>
+
+      <DataTable<MockTender>
+        columns={columns}
+        data={filtered}
+        rowKey={r => r.id}
+        variant="attached"
+        ariaLabel="Active tenders"
+        onRowClick={toggleExpand}
+        expandedRow={{ rowId: expandedId, render: row => <ExpandPanel row={row} /> }}
+        emptyState={{
+          message: 'No tenders match these filters',
+          action: { label: 'Clear filters', onClick: clearFilters },
+        }}
+      />
+
+      {/* ============================================================
+           Secondary demos (below the main page surface)
+           ============================================================ */}
+
+      <section className="pg-section" style={{ marginTop: 48 }}>
+        <h2 className="pg-section-title">DataTable - loading state</h2>
+        <DataTable<MockTender>
+          columns={columns}
+          data={[]}
+          rowKey={r => r.id}
+          isLoading
+          ariaLabel="Loading state"
+        />
+      </section>
+
+      <section className="pg-section">
+        <h2 className="pg-section-title">DataTable - error state</h2>
+        <DataTable<MockTender>
+          columns={columns}
+          data={[]}
+          rowKey={r => r.id}
+          isError
+          errorMessage="Couldn't load tenders"
+          onRetry={() => {}}
+          ariaLabel="Error state"
+        />
+      </section>
+
+      <section className="pg-section">
+        <h2 className="pg-section-title">Form primitives</h2>
+        <div className="pg-grid-2">
+          <Input
+            label="Tender title"
+            placeholder="e.g. School cleaning framework"
+            hint="Shown in lists and detail panels"
+            required
+          />
+          <Input
+            label="Reference code"
+            placeholder="SKDC-1629"
+            error="A reference is required"
+            defaultValue=""
+          />
+          <Select
+            label="Sector"
+            placeholder="Choose a sector"
+            options={[
+              { value: 'health', label: 'Health' },
+              { value: 'education', label: 'Education' },
+              { value: 'local', label: 'Local Authority' },
+              { value: 'social', label: 'Social Housing' },
+            ]}
+            onValueChange={() => {}}
+          />
+          <Input label="Estimated value" placeholder="£0" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Textarea
+            label="Notes"
+            placeholder="Anything you want to remember about this tender..."
+            rows={3}
+            hint="Plain text, no formatting needed"
+          />
+        </div>
+      </section>
+
+      <section className="pg-section">
+        <h2 className="pg-section-title">Modal</h2>
+        <p className="pg-section-note">
+          Radix Dialog with the new visual language. Click below to open.
+        </p>
+        <Button variant="primary" onClick={() => setModalOpen(true)}>
+          Open modal
+        </Button>
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title="Drop this prospect?"
+          description="They will be removed from the active sales pipeline. You can restore them from the archive later."
+          size="sm"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => setModalOpen(false)}>
+                Drop prospect
+              </Button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 14, color: 'var(--text-secondary-v1)', lineHeight: 1.5 }}>
+            This action will be logged in the activity timeline so you can see when and
+            why the prospect was dropped.
+          </p>
+        </Modal>
+      </section>
+
+      <section className="pg-section">
+        <h2 className="pg-section-title">Badge variants</h2>
+        <div className="pg-row">
+          <Badge variant="warning" withDot>Writing</Badge>
+          <Badge variant="info" withDot>Submitted</Badge>
+          <Badge variant="neutral" withDot>PSQ Stage</Badge>
+          <Badge variant="success">Won</Badge>
+          <Badge variant="danger">Lost</Badge>
+          <Badge variant="brand" withDot>Summary Sent</Badge>
+        </div>
+        <div className="pg-row">
+          <Badge variant="warning" size="md" withDot>Writing</Badge>
+          <Badge variant="info" size="md" withDot>Submitted</Badge>
+          <Badge variant="success" size="md">Won</Badge>
+          <Badge variant="danger" size="md">Lost</Badge>
+        </div>
+      </section>
+
+      <section className="pg-section" style={{ paddingBottom: 48 }}>
+        <h2 className="pg-section-title">Button variants</h2>
+        <div className="pg-row">
+          <Button variant="primary">Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="danger">Danger</Button>
+        </div>
+        <div className="pg-row">
+          <Button variant="primary" size="sm">Small</Button>
+          <Button variant="primary" size="md">Medium</Button>
+          <Button variant="primary" size="lg">Large</Button>
+        </div>
+        <div className="pg-row">
+          <Button variant="primary" icon={Plus}>Add Tender</Button>
+          <Button variant="primary" icon={Check}>Mark Won</Button>
+          <Button variant="secondary" icon={Pencil}>Edit</Button>
+          <Button variant="primary" icon={Send} iconPosition="right">Send</Button>
+          <Button variant="primary" loading>Saving</Button>
+          <Button variant="primary" disabled>Disabled</Button>
+        </div>
+      </section>
+    </AppShell>
   );
 }

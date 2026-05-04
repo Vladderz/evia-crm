@@ -63,6 +63,11 @@ export interface DataTableProps<T> {
   onSortChange?: (state: SortState) => void;
   /** ARIA label for the table element (improves screen reader output). */
   ariaLabel?: string;
+  /**
+   * "attached" sits flush below stage tabs + filter row: bottom corners
+   * round, no top border. "standalone" is the default rounded card.
+   */
+  variant?: 'standalone' | 'attached';
 }
 
 /* -----------------------------------------------------------------
@@ -146,6 +151,7 @@ export function DataTable<T>({
   sortState,
   onSortChange,
   ariaLabel,
+  variant = 'standalone',
 }: DataTableProps<T>) {
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
@@ -379,9 +385,12 @@ export function DataTable<T>({
     );
   }
 
+  const containerClass =
+    variant === 'attached' ? 'dt-container dt-container-attached' : 'dt-container';
+
   return (
     <Tooltip.Provider delayDuration={300} skipDelayDuration={100}>
-      <div className="dt-container">
+      <div className={containerClass}>
         <div className="dt-scroll">
           <table className="dt-table" role="table" aria-label={ariaLabel}>
             {header}
