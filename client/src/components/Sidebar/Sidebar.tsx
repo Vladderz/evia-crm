@@ -49,7 +49,6 @@ export function Sidebar({ items, user, open = false, onClose, activeKey }: Sideb
       >
         <div className="sidebar-brand">
           <img src={logoUrl} alt="Evia Consultancy" className="sidebar-brand-logo" />
-          <span className="sidebar-brand-mark">CRM</span>
         </div>
 
         <nav className="sidebar-nav" aria-label="Main">

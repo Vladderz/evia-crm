@@ -119,7 +119,7 @@ export function formatRelativeDays(
  * views (per brief: "Submitted / Awaiting Result" only in detail).
  */
 const TENDER_STATUS_LABELS: Record<string, string> = {
-  questionnaire_sent: 'PSQ Stage',
+  questionnaire_sent: 'Questionnaire Sent',
   writing: 'Writing',
   submitted: 'Submitted',
   won: 'Won',
@@ -128,7 +128,7 @@ const TENDER_STATUS_LABELS: Record<string, string> = {
 };
 
 const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
-  questionnaire_sent: 'PSQ Stage',
+  questionnaire_sent: 'Questionnaire Sent',
   writing: 'Writing',
   submitted: 'Submitted / Awaiting Result',
   won: 'Won',

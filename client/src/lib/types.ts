@@ -96,6 +96,13 @@ export interface Tender {
   status: 'questionnaire_sent' | 'writing' | 'submitted' | 'won' | 'lost' | 'archived'
   assigned_to: string | null
   notes: string | null
+  /**
+   * "Awaiting client input" flag - only meaningful when status is
+   * 'writing'. Surfaces as a second amber badge on the row and a
+   * toggle in the Add/Edit drawer.
+   */
+  awaiting_info?: boolean | null
+  awaiting_info_note?: string | null
   created_by: number | null
   created_by_name: string | null
   created_at: string

@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
-  Briefcase,
+  Banknote,
   Check,
   FileText,
   Pencil,
   Plus,
   Send,
   StickyNote,
-  TrendingUp,
+  Target,
+  Trophy,
 } from 'lucide-react';
 import { AppShell } from '../components/AppShell/AppShell';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -26,6 +27,11 @@ import { Input } from '../components/Input/Input';
 import { Textarea } from '../components/Textarea/Textarea';
 import { Select } from '../components/Select/Select';
 import { Modal } from '../components/Modal/Modal';
+import {
+  TenderDrawer,
+  type TenderFormValues,
+  type TenderStatus,
+} from '../components/TenderDrawer/TenderDrawer';
 import {
   formatCurrency,
   formatDate,
@@ -46,8 +52,10 @@ interface MockTender {
   fee: number | null;
   submission_deadline: string;
   award_date: string;
-  status: 'writing' | 'submitted' | 'questionnaire_sent' | 'won' | 'lost';
+  status: TenderStatus;
   assigned_to: 'vlad' | 'tristan' | null;
+  awaiting_info?: boolean;
+  awaiting_info_note?: string;
 }
 
 const MOCK_TENDERS: MockTender[] = [
@@ -63,6 +71,8 @@ const MOCK_TENDERS: MockTender[] = [
     award_date: '2026-06-15',
     status: 'writing',
     assigned_to: 'vlad',
+    awaiting_info: true,
+    awaiting_info_note: 'Waiting on TUPE staff list from current provider',
   },
   {
     id: 't2',
@@ -163,23 +173,24 @@ const MOCK_TENDERS: MockTender[] = [
 ];
 
 /* -----------------------------------------------------------------
- * Status -> Badge variant mapping (per brief)
+ * Status -> Badge variant
  * ----------------------------------------------------------------- */
-const STATUS_VARIANT: Record<MockTender['status'], BadgeVariant> = {
+const STATUS_VARIANT: Record<TenderStatus, BadgeVariant> = {
   writing: 'warning',
   submitted: 'info',
   questionnaire_sent: 'neutral',
   won: 'success',
   lost: 'danger',
+  archived: 'neutral',
 };
 
-/** Stage chips show a leading dot; result chips (Won/Lost) do not. */
-const STATUS_HAS_DOT: Record<MockTender['status'], boolean> = {
+const STATUS_HAS_DOT: Record<TenderStatus, boolean> = {
   writing: true,
   submitted: true,
   questionnaire_sent: true,
   won: false,
   lost: false,
+  archived: false,
 };
 
 const ASSIGNED_LABEL: Record<string, string> = {
@@ -203,10 +214,19 @@ function TenderCell({ row }: { row: MockTender }) {
 }
 
 function StatusCell({ row }: { row: MockTender }) {
+  const showAwaiting = row.status === 'writing' && row.awaiting_info === true;
+  const awaitingTooltip = row.awaiting_info_note?.trim() || 'Waiting on client input';
   return (
-    <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
-      {getStatusLabel(row.status)}
-    </Badge>
+    <div className="status-stack">
+      <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
+        {getStatusLabel(row.status)}
+      </Badge>
+      {showAwaiting && (
+        <span title={awaitingTooltip}>
+          <Badge variant="warning" withDot>Awaiting Info</Badge>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -241,7 +261,13 @@ function AssignedCell({ row }: { row: MockTender }) {
   );
 }
 
-function ActionsCell({ row }: { row: MockTender }) {
+function ActionsCell({
+  row,
+  onEdit,
+}: {
+  row: MockTender;
+  onEdit: (row: MockTender) => void;
+}) {
   const showMarkWon = row.status === 'submitted';
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
@@ -253,7 +279,11 @@ function ActionsCell({ row }: { row: MockTender }) {
           <Check size={12} aria-hidden /> Mark Won
         </button>
       ) : (
-        <button type="button" className="dt-action dt-action-ghost">
+        <button
+          type="button"
+          className="dt-action dt-action-ghost"
+          onClick={() => onEdit(row)}
+        >
           <Pencil size={12} aria-hidden /> Edit
         </button>
       )}
@@ -273,7 +303,7 @@ function ExpandPanel({ row }: { row: MockTender }) {
         <div className="dt-expand-timeline">
           <div className="dt-expand-timeline-item">
             <span className="dt-expand-timeline-date">{formatDate('2026-05-02')}</span>
-            <span>Status changed from PSQ Stage to Writing</span>
+            <span>Status changed from Questionnaire Sent to Writing</span>
           </div>
           <div className="dt-expand-timeline-item">
             <span className="dt-expand-timeline-date">{formatDate('2026-04-28')}</span>
@@ -330,7 +360,7 @@ function ExpandPanel({ row }: { row: MockTender }) {
  * Columns
  * ----------------------------------------------------------------- */
 
-function buildColumns(): Column<MockTender>[] {
+function buildColumns(onEdit: (row: MockTender) => void): Column<MockTender>[] {
   return [
     {
       key: 'tender',
@@ -395,39 +425,95 @@ function buildColumns(): Column<MockTender>[] {
       header: '',
       width: 180,
       align: 'right',
-      render: row => <ActionsCell row={row} />,
+      render: row => <ActionsCell row={row} onEdit={onEdit} />,
     },
   ];
 }
 
 /* -----------------------------------------------------------------
- * Page
+ * Helpers
  * ----------------------------------------------------------------- */
+
+function tenderToForm(t: MockTender): Partial<TenderFormValues> {
+  return {
+    title: t.title,
+    tender_url: '',
+    buyer: '',
+    estimated_value: t.value != null ? String(t.value) : '',
+    evia_fee: t.fee != null ? String(t.fee) : '',
+    submission_deadline: t.submission_deadline ? `${t.submission_deadline}T09:00` : '',
+    award_date: t.award_date ?? '',
+    portal: '',
+    reference_number: t.reference,
+    sector: '',
+    client_id: '',
+    status: t.status,
+    awaiting_info: t.awaiting_info ?? false,
+    awaiting_info_note: t.awaiting_info_note ?? '',
+    assigned_to:
+      t.assigned_to === 'vlad'
+        ? 'Vlad'
+        : t.assigned_to === 'tristan'
+          ? 'Tristan'
+          : '',
+    notes: '',
+  };
+}
 
 const STAGE_TABS = [
   { key: 'all', label: 'All' },
   { key: 'writing', label: 'Writing' },
-  { key: 'questionnaire_sent', label: 'PSQ' },
+  { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'won', label: 'Won' },
   { key: 'lost', label: 'Lost' },
 ];
 
+/* -----------------------------------------------------------------
+ * Page
+ * ----------------------------------------------------------------- */
+
 export default function Playground() {
-  const columns = useMemo(buildColumns, []);
   const [stage, setStage] = useState<string>('writing');
   const [search, setSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>('t1');
   const [modalOpen, setModalOpen] = useState(false);
+  const [drawerInitial, setDrawerInitial] = useState<Partial<TenderFormValues> | null | undefined>(
+    undefined,
+  );
+
+  const drawerOpen = drawerInitial !== undefined;
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0 };
+    const c: Record<string, number> = { all: MOCK_TENDERS.length };
     for (const t of MOCK_TENDERS) {
-      c.all = (c.all ?? 0) + 1;
       c[t.status] = (c[t.status] ?? 0) + 1;
     }
     return c;
+  }, []);
+
+  /* KPI strip values, computed from the mock dataset. */
+  const stats = useMemo(() => {
+    const isPipeline = (t: MockTender) =>
+      t.status !== 'won' && t.status !== 'lost' && t.status !== 'archived';
+    const active = MOCK_TENDERS.filter(isPipeline).length;
+    const submitted = MOCK_TENDERS.filter(t => t.status === 'submitted').length;
+    const won = MOCK_TENDERS.filter(t => t.status === 'won');
+    const lost = MOCK_TENDERS.filter(t => t.status === 'lost');
+    const wonValue = won.reduce((s, t) => s + (t.value ?? 0), 0);
+    const wonFees = won.reduce((s, t) => s + (t.fee ?? 0), 0);
+    const decided = won.length + lost.length;
+    const winRate = decided > 0 ? Math.round((won.length / decided) * 100) : 0;
+    return {
+      active,
+      submitted,
+      wonValue,
+      wonFees,
+      wonCount: won.length,
+      decided,
+      winRate,
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -454,38 +540,69 @@ export default function Playground() {
     setExpandedId(curr => (curr === row.id ? null : row.id));
   }
 
+  function openAdd() {
+    setDrawerInitial(null);
+  }
+
+  function openEdit(row: MockTender) {
+    setDrawerInitial(tenderToForm(row));
+  }
+
+  function closeDrawer() {
+    setDrawerInitial(undefined);
+  }
+
   const filtersActive = !!search || !!assigned;
+  const columns = useMemo(() => buildColumns(openEdit), []);
 
   return (
-    <AppShell
-      title="Active Tenders"
-      user={{ name: 'Vlad Lewis', onLogout: () => {} }}
-      sidebarActiveKey="tenders"
-    >
+    <AppShell user={{ name: 'Vlad Lewis', onLogout: () => {} }} sidebarActiveKey="tenders">
       <PageHeader
         title="Active Tenders"
         description="Track tenders through writing, submission, and outcomes"
         actions={
-          <Button variant="primary" icon={Plus}>Add Tender</Button>
+          <Button variant="primary" icon={Plus} onClick={openAdd}>
+            Add Tender
+          </Button>
         }
       />
 
       <div className="kpi-row">
-        <KPITile label="Active Tenders" value={9} icon={FileText} tone="brand" />
-        <KPITile label="Submitted" value={2} icon={Send} tone="info" />
         <KPITile
-          label="Pipeline Value"
-          value={formatCurrency(2193000)}
-          icon={TrendingUp}
+          label="Active Tenders"
+          value={stats.active}
+          icon={FileText}
           tone="brand"
+        />
+        <KPITile
+          label="Submitted"
+          value={stats.submitted}
+          icon={Send}
+          tone="info"
+        />
+        <KPITile
+          label="Won Value"
+          value={formatCurrency(stats.wonValue)}
+          icon={Trophy}
+          tone="success"
           mono
         />
         <KPITile
-          label="Submitted Value"
-          value={formatCurrency(595000)}
-          icon={Briefcase}
-          tone="brand"
+          label="Won Fees"
+          value={formatCurrency(stats.wonFees)}
+          icon={Banknote}
+          tone="success"
           mono
+        />
+        <KPITile
+          label="Win Rate"
+          value={
+            stats.decided > 0
+              ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
+              : '0 of 0 (0%)'
+          }
+          icon={Target}
+          tone="warning"
         />
       </div>
 
@@ -526,8 +643,19 @@ export default function Playground() {
         }}
       />
 
+      <TenderDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        initial={drawerInitial ?? null}
+        defaultAssignee="Vlad"
+        onSave={async () => {
+          // Playground demo - just close. Real save happens in Step 4.
+          closeDrawer();
+        }}
+      />
+
       {/* ============================================================
-           Secondary demos (below the main page surface)
+           Secondary demos (playground-only, scoped to /playground)
            ============================================================ */}
 
       <section className="pg-section" style={{ marginTop: 48 }}>
@@ -552,6 +680,27 @@ export default function Playground() {
           onRetry={() => {}}
           ariaLabel="Error state"
         />
+      </section>
+
+      <section className="pg-section">
+        <h2 className="pg-section-title">Drawer demos</h2>
+        <p className="pg-section-note">
+          Add Tender (empty) and Edit Tender (pre-filled with row t1, which has Awaiting
+          Info on). The page header "+ Add Tender" button and the row Edit buttons open
+          the same drawer.
+        </p>
+        <div className="pg-row">
+          <Button variant="primary" icon={Plus} onClick={openAdd}>
+            Open Add Tender
+          </Button>
+          <Button
+            variant="secondary"
+            icon={Pencil}
+            onClick={() => openEdit(MOCK_TENDERS[0]!)}
+          >
+            Open Edit Tender (Writing + Awaiting Info)
+          </Button>
+        </div>
       </section>
 
       <section className="pg-section">
@@ -595,7 +744,8 @@ export default function Playground() {
       <section className="pg-section">
         <h2 className="pg-section-title">Modal</h2>
         <p className="pg-section-note">
-          Radix Dialog with the new visual language. Click below to open.
+          Centred Radix Dialog (used for confirmations). The drawer above is the
+          right-side variant for forms.
         </p>
         <Button variant="primary" onClick={() => setModalOpen(true)}>
           Open modal
@@ -627,16 +777,11 @@ export default function Playground() {
       <section className="pg-section">
         <h2 className="pg-section-title">Badge variants</h2>
         <div className="pg-row">
-          <Badge variant="warning" withDot>Writing</Badge>
-          <Badge variant="info" withDot>Submitted</Badge>
-          <Badge variant="neutral" withDot>PSQ Stage</Badge>
-          <Badge variant="success">Won</Badge>
-          <Badge variant="danger">Lost</Badge>
-          <Badge variant="brand" withDot>Summary Sent</Badge>
-        </div>
-        <div className="pg-row">
           <Badge variant="warning" size="md" withDot>Writing</Badge>
+          <Badge variant="warning" size="md" withDot>Awaiting Info</Badge>
           <Badge variant="info" size="md" withDot>Submitted</Badge>
+          <Badge variant="neutral" size="md" withDot>Questionnaire Sent</Badge>
+          <Badge variant="brand" size="md" withDot>Summary Sent</Badge>
           <Badge variant="success" size="md">Won</Badge>
           <Badge variant="danger" size="md">Lost</Badge>
         </div>

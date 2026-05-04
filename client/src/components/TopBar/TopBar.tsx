@@ -2,7 +2,11 @@ import { Bell, Menu, Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 interface TopBarProps {
-  title: string;
+  /**
+   * Optional - the page H1 inside <PageHeader> owns the title now.
+   * Kept for cases where a top-bar breadcrumb is wanted.
+   */
+  title?: string;
   /** Right-side action slot. If omitted, default placeholder Search + Bell icons render. */
   actions?: ReactNode;
   /** Mobile hamburger handler - shows the burger button at <768px when set. */
@@ -23,7 +27,7 @@ export function TopBar({ title, actions, onMobileMenu }: TopBarProps) {
             <Menu size={20} aria-hidden />
           </button>
         )}
-        <h1 className="topbar-title">{title}</h1>
+        {title && <h1 className="topbar-title">{title}</h1>}
       </div>
       <div className="topbar-actions">
         {actions ?? (

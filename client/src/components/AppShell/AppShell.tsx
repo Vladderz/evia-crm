@@ -12,8 +12,8 @@ export const DEFAULT_NAV_ITEMS: SidebarNavItem[] = [
 ];
 
 interface AppShellProps {
-  /** TopBar page title. Pages set this per-route. */
-  title: string;
+  /** Optional top-bar title - usually omitted, since PageHeader owns the H1. */
+  title?: string;
   /** TopBar right-side action slot (defaults to Search + Bell placeholders). */
   topBarActions?: ReactNode;
   /** Sidebar nav items - defaults to the standard CRM nav. */
