@@ -18,9 +18,20 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          {import.meta.env.DEV && (
-            <Route path="/playground" element={<Playground />} />
-          )}
+          {/*
+            Dev-only component sandbox. The Route is always declared
+            so it is reliably picked up by react-router's child
+            traversal; the DEV check gates the rendered element. In a
+            production build Vite resolves import.meta.env.DEV to
+            false at compile time and the ternary collapses to the
+            redirect, so /playground 404s back to / for real users.
+          */}
+          <Route
+            path="/playground"
+            element={
+              import.meta.env.DEV ? <Playground /> : <Navigate to="/" replace />
+            }
+          />
           <Route
             path="/"
             element={
