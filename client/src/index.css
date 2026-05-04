@@ -1,6 +1,125 @@
 /* Evia CRM - Global Styles */
 
 :root {
+  /* ============================================================
+     v1 DESIGN TOKENS (Stripe-style refresh, iris purple brand)
+     New components reference these. Legacy tokens below preserved
+     for un-refactored components; cleaned up in Step 10.
+     ============================================================ */
+
+  /* Surfaces */
+  --surface-page: #F8F9FB;
+  --surface-card: #FFFFFF;
+  --surface-muted: #F3F4F6;
+  --surface-sunken: #EAECF0;
+
+  /* Borders */
+  --border-subtle: #E5E7EB;
+  --border-default: #D1D5DB;
+  --border-strong: #9CA3AF;
+  --border-focus: #8176B2;
+
+  /* Text */
+  --text-primary-v1: #1C1917;
+  --text-secondary-v1: #44403C;
+  --text-tertiary: #78716C;
+  --text-disabled: #A8A29E;
+  --text-inverse: #FFFFFF;
+
+  /* Brand - iris purple (rebrand 2026-05) */
+  --brand-primary: #8176B2;
+  --brand-hover: #6B619B;
+  --brand-active: #574D82;
+  --brand-subtle: #F2F0F8;
+  --brand-border: #D9D4E8;
+  --brand-text: #6B619B;
+
+  /* Brand - navy (sparingly, high-emphasis dark text) */
+  --brand-navy: #0E2130;
+  --brand-navy-hover: #1A2D3E;
+
+  /* Brand - cool grey */
+  --brand-grey: #969DA7;
+  --brand-grey-subtle: #E8EAEE;
+
+  /* Semantic - success */
+  --success: #15803D;
+  --success-subtle: #F0FDF4;
+  --success-border: #BBF7D0;
+
+  /* Semantic - warning */
+  --warning: #B45309;
+  --warning-subtle: #FFFBEB;
+  --warning-border: #FED7AA;
+
+  /* Semantic - danger */
+  --danger: #B91C1C;
+  --danger-subtle: #FEF2F2;
+  --danger-border: #FECACA;
+
+  /* Semantic - info */
+  --info: #1D4ED8;
+  --info-subtle: #EFF6FF;
+  --info-border: #BFDBFE;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.5;
+
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  /* Spacing (8pt grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Shadow */
+  --shadow-xs: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-sm: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-md: 0 4px 8px rgba(28, 25, 23, 0.06), 0 2px 4px rgba(28, 25, 23, 0.04);
+  --shadow-lg: 0 10px 20px rgba(28, 25, 23, 0.08), 0 4px 8px rgba(28, 25, 23, 0.04);
+  --shadow-popover: 0 8px 24px rgba(28, 25, 23, 0.12);
+
+  /* Transitions */
+  --transition-fast: 80ms ease-out;
+  --transition-base: 150ms ease-out;
+  --transition-modal: 200ms ease-out;
+
+  /* ============================================================
+     LEGACY TOKENS (existing components - removed in Step 10)
+     ============================================================ */
   --purple-dark: #2D1B69;
   --purple-accent: #8A2BE2;
   --purple-accent-hover: #7322C8;
@@ -12,7 +131,15 @@
   --border: #e0dce8;
   --shadow: 0 2px 8px rgba(45, 27, 105, 0.08);
   --radius: 8px;
-  --font: Arial, Helvetica, sans-serif;
+  --font: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 *, *::before, *::after {

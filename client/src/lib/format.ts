@@ -1,0 +1,129 @@
+/* Formatting helpers - all UI date and currency rendering goes through here. */
+
+const LONDON_TZ = 'Europe/London';
+
+const SHORT_MONTH = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+function toDate(value: string | Date | null | undefined): Date | null {
+  if (value == null || value === '') return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Returns the calendar day in Europe/London as { year, month, day },
+ * with month 1-12. Robust to DST.
+ */
+function londonParts(d: Date): { year: number; month: number; day: number } {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = fmt.formatToParts(d);
+  const get = (t: string) => Number(parts.find(p => p.type === t)?.value ?? '0');
+  return { year: get('year'), month: get('month'), day: get('day') };
+}
+
+/**
+ * Standard date format used everywhere: "27 Mar 26".
+ * Returns empty string for null/invalid input - callers render `-` themselves
+ * if they need a placeholder.
+ */
+export function formatDate(value: string | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return '';
+  const { year, month, day } = londonParts(d);
+  return `${day} ${SHORT_MONTH[month - 1]} ${String(year).slice(-2)}`;
+}
+
+/**
+ * Currency in GBP. No decimals at >=£100, decimals shown under £100.
+ * Negative values render with a leading minus inside the currency.
+ */
+export function formatCurrency(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '';
+  const showDecimals = Math.abs(value) < 100;
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: showDecimals ? 2 : 0,
+    maximumFractionDigits: showDecimals ? 2 : 0,
+  }).format(value);
+}
+
+export type RelativeDaysTone = 'overdue' | 'urgent' | null;
+
+export interface RelativeDays {
+  /** Whole days from today. Negative = past, positive = future. */
+  days: number;
+  /** Pre-formatted chip label, e.g. "9 days overdue" or "9 days". null = no chip. */
+  label: string | null;
+  /** "overdue" (danger), "urgent" (warning, <14 days future), or null. */
+  tone: RelativeDaysTone;
+}
+
+/**
+ * Calendar-day delta in Europe/London between target date and today.
+ * Used to drive the inline overdue/countdown chips next to dates in tables.
+ *
+ * Rules from the brief:
+ *   - past target  -> tone "overdue", label "N days overdue"
+ *   - 0..13 days   -> tone "urgent",  label "N days" (or "Today" / "Tomorrow")
+ *   - 14+ days     -> tone null, label null (no chip)
+ */
+export function formatRelativeDays(
+  value: string | Date | null | undefined,
+  now: Date = new Date(),
+): RelativeDays | null {
+  const target = toDate(value);
+  if (!target) return null;
+
+  const t = londonParts(target);
+  const r = londonParts(now);
+  const targetUtc = Date.UTC(t.year, t.month - 1, t.day);
+  const refUtc = Date.UTC(r.year, r.month - 1, r.day);
+  const days = Math.round((targetUtc - refUtc) / 86_400_000);
+
+  if (days < 0) {
+    const n = Math.abs(days);
+    return {
+      days,
+      label: n === 1 ? '1 day overdue' : `${n} days overdue`,
+      tone: 'overdue',
+    };
+  }
+  if (days < 14) {
+    let label: string;
+    if (days === 0) label = 'Today';
+    else if (days === 1) label = 'Tomorrow';
+    else label = `${days} days`;
+    return { days, label, tone: 'urgent' };
+  }
+  return { days, label: null, tone: null };
+}
+
+/* ------------------------------------------------------------------
+ * Status labels
+ * ------------------------------------------------------------------
+ * Translates Tender enum values (snake_case in DB) to display labels.
+ * Pipeline statuses are stored as display strings already and pass
+ * through unchanged.
+ */
+const TENDER_STATUS_LABELS: Record<string, string> = {
+  questionnaire_sent: 'PSQ Stage',
+  writing: 'Writing',
+  submitted: 'Submitted / Awaiting Result',
+  won: 'Won',
+  lost: 'Lost',
+  archived: 'Archived',
+};
+
+export function getStatusLabel(status: string | null | undefined): string {
+  if (!status) return '';
+  return TENDER_STATUS_LABELS[status] ?? status;
+}
