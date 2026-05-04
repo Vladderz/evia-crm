@@ -18,38 +18,58 @@ async function logActivity(userId, action, entityType, entityId, details) {
 const STATUS_LABELS = {
   contacted: 'Contacted',
   call_booked: 'Call Booked',
-  contract_summary_sent: 'Contract Summary Sent',
-  agreed: 'Agreed',
-  not_interested: 'Not Interested',
 };
 
+// Single-step advance: contacted -> call_booked. From call_booked the
+// next step is /promote (push to Active Tenders), not /advance.
 const ADVANCE_MAP = {
   contacted: 'call_booked',
-  call_booked: 'contract_summary_sent',
-  contract_summary_sent: 'agreed',
+};
+
+const DROP_REASONS = [
+  'not_interested', 'went_with_other', 'price_concern',
+  'ghosted', 'timing', 'other',
+];
+
+const DROP_REASON_LABELS = {
+  not_interested:  'Not interested in this tender',
+  went_with_other: 'Went with another bid writer',
+  price_concern:   'Price / fee concern',
+  ghosted:         'Ghosted / no response',
+  timing:          'Timing wrong',
+  other:           'Other',
 };
 
 // GET /api/pipeline/stats
 router.get('/stats', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE status NOT IN ('not_interested')) as total,
-        COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
-        COUNT(*) FILTER (WHERE status = 'call_booked') as call_booked,
-        COUNT(*) FILTER (WHERE status = 'contract_summary_sent') as contract_summary_sent,
-        COUNT(*) FILTER (WHERE status = 'agreed') as agreed,
-        COUNT(*) FILTER (WHERE next_followup_date <= CURRENT_DATE AND status NOT IN ('agreed', 'not_interested')) as overdue_followups
-      FROM sales_pipeline
-    `);
-    const row = result.rows[0];
+    const [pipelineRow, activityRow] = await Promise.all([
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE dropped_at IS NULL) as active_prospects,
+          COUNT(*) FILTER (WHERE dropped_at IS NULL AND status = 'contacted') as contacted,
+          COUNT(*) FILTER (WHERE dropped_at IS NULL AND status = 'call_booked') as call_booked,
+          COUNT(*) FILTER (WHERE dropped_at IS NULL AND next_followup_date <= CURRENT_DATE) as overdue_followups,
+          COUNT(*) FILTER (WHERE dropped_at >= NOW() - INTERVAL '30 days') as dropped_30d
+        FROM sales_pipeline
+      `),
+      pool.query(`
+        SELECT COUNT(*)::int AS converted_30d
+        FROM activity_log
+        WHERE entity_type = 'pipeline'
+          AND action = 'promoted prospect to client and tender'
+          AND created_at >= NOW() - INTERVAL '30 days'
+      `),
+    ]);
+    const row = pipelineRow.rows[0];
+    const converted_30d = activityRow.rows[0]?.converted_30d ?? 0;
     return res.json({
-      total: parseInt(row.total) || 0,
-      contacted: parseInt(row.contacted) || 0,
-      call_booked: parseInt(row.call_booked) || 0,
-      contract_summary_sent: parseInt(row.contract_summary_sent) || 0,
-      agreed: parseInt(row.agreed) || 0,
+      active_prospects: parseInt(row.active_prospects) || 0,
+      contacted:        parseInt(row.contacted) || 0,
+      call_booked:      parseInt(row.call_booked) || 0,
       overdue_followups: parseInt(row.overdue_followups) || 0,
+      dropped_30d:      parseInt(row.dropped_30d) || 0,
+      converted_30d:    converted_30d,
     });
   } catch (err) {
     console.error('Pipeline stats error:', err);
@@ -140,7 +160,7 @@ router.get('/', async (req, res) => {
         ORDER BY created_at DESC
         LIMIT 1
       ) latest_note ON true
-      WHERE sp.status NOT IN ('not_interested')
+      WHERE sp.dropped_at IS NULL
     `;
     const params = [];
     if (status) {
@@ -303,9 +323,11 @@ router.post('/:id/promote', async (req, res) => {
       return res.status(404).json({ error: 'Prospect not found' });
     }
     const prospect = prospectResult.rows[0];
-    if (prospect.status !== 'agreed') {
+    if (prospect.status !== 'call_booked' || prospect.dropped_at) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Prospect must be at agreed status to promote' });
+      return res.status(400).json({
+        error: 'Prospect must be at Call Booked stage and not dropped to push to Active Tenders',
+      });
     }
 
     // 2. Check if client already exists
@@ -387,35 +409,110 @@ router.post('/:id/promote', async (req, res) => {
   }
 });
 
-// POST /api/pipeline/:id/not-interested
-router.post('/:id/not-interested', async (req, res) => {
+// POST /api/pipeline/:id/drop
+// Move a prospect into No Man's Land. Sets dropped_at + drop_reason
+// + drop_note. Status is preserved as the "stage when dropped".
+router.post('/:id/drop', async (req, res) => {
+  const { reason, note } = req.body || {};
+  if (!DROP_REASONS.includes(reason)) {
+    return res.status(400).json({ error: 'Invalid drop reason' });
+  }
   try {
     const current = await pool.query('SELECT * FROM sales_pipeline WHERE id = $1', [req.params.id]);
     if (!current.rows[0]) {
       return res.status(404).json({ error: 'Prospect not found' });
     }
     const prospect = current.rows[0];
+    if (prospect.dropped_at) {
+      return res.status(400).json({ error: 'Prospect is already dropped' });
+    }
+
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+    const result = await pool.query(
+      `UPDATE sales_pipeline SET
+        dropped_at = NOW(),
+        drop_reason = $1,
+        drop_note = $2,
+        next_followup_date = NULL,
+        updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [reason, trimmedNote || null, req.params.id]
+    );
+
+    const reasonLabel = DROP_REASON_LABELS[reason] || reason;
+    const systemNote = trimmedNote
+      ? `Dropped to No Man's Land: ${reasonLabel}. ${trimmedNote}`
+      : `Dropped to No Man's Land: ${reasonLabel}.`;
+    await pool.query(
+      `INSERT INTO pipeline_notes (pipeline_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [prospect.id, systemNote, req.session.userId]
+    );
+
+    await logActivity(req.session.userId, 'dropped prospect', 'pipeline', prospect.id, {
+      company_name: prospect.company_name,
+      stage_when_dropped: prospect.status,
+      reason,
+      note: trimmedNote || null,
+    });
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Drop prospect error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/pipeline/:id/re-engage
+// Pull a prospect out of No Man's Land back into Sales Pipeline.
+// Status is reset to 'contacted'. drop_reason / drop_note are kept on
+// the row as historical context. (To push the row into Active Tenders
+// instead, call /promote - that flow handles client + tender creation
+// and deletes the pipeline row.)
+router.post('/:id/re-engage', async (req, res) => {
+  try {
+    const current = await pool.query('SELECT * FROM sales_pipeline WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) {
+      return res.status(404).json({ error: 'Prospect not found' });
+    }
+    const prospect = current.rows[0];
+    if (!prospect.dropped_at) {
+      return res.status(400).json({ error: 'Prospect is not dropped' });
+    }
 
     const result = await pool.query(
-      `UPDATE sales_pipeline SET status = 'not_interested', next_followup_date = NULL, updated_at = NOW()
+      `UPDATE sales_pipeline SET
+        dropped_at = NULL,
+        status = 'contacted',
+        last_contact_date = CURRENT_DATE,
+        next_followup_date = CURRENT_DATE + INTERVAL '3 days',
+        updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
       [req.params.id]
     );
 
+    const reasonLabel = DROP_REASON_LABELS[prospect.drop_reason] || prospect.drop_reason || 'unknown';
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     await pool.query(
-      `INSERT INTO pipeline_notes (pipeline_id, note, note_type, created_by) VALUES ($1, 'Marked as not interested', 'system', $2)`,
-      [prospect.id, req.session.userId]
+      `INSERT INTO pipeline_notes (pipeline_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [
+        prospect.id,
+        `Re-engaged on ${today} from No Man's Land. Original drop reason: ${reasonLabel}.`,
+        req.session.userId,
+      ]
     );
 
-    await logActivity(req.session.userId, 'marked prospect not interested', 'pipeline', prospect.id, {
+    await logActivity(req.session.userId, 're-engaged prospect', 'pipeline', prospect.id, {
       company_name: prospect.company_name,
-      tender_title: prospect.tender_title,
+      original_drop_reason: prospect.drop_reason,
     });
 
     return res.json(result.rows[0]);
   } catch (err) {
-    console.error('Not interested error:', err);
+    console.error('Re-engage prospect error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

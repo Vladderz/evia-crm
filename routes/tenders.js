@@ -15,6 +15,19 @@ async function logActivity(userId, action, entityType, entityId, details) {
   }
 }
 
+const DROP_REASONS = [
+  'not_interested', 'went_with_other', 'price_concern',
+  'ghosted', 'timing', 'other',
+];
+const DROP_REASON_LABELS = {
+  not_interested:  'Not interested in this tender',
+  went_with_other: 'Went with another bid writer',
+  price_concern:   'Price / fee concern',
+  ghosted:         'Ghosted / no response',
+  timing:          'Timing wrong',
+  other:           'Other',
+};
+
 async function runAutoArchive(userId) {
   try {
     const result = await pool.query(
@@ -22,6 +35,7 @@ async function runAutoArchive(userId) {
        SET status = 'archived'
        WHERE status = 'submitted'
          AND submission_deadline < NOW() - INTERVAL '90 days'
+         AND dropped_at IS NULL
        RETURNING id, title`
     );
     for (const row of result.rows) {
@@ -40,13 +54,13 @@ router.get('/stats', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted'))::int AS active,
-        COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted,
-        COALESCE(SUM(estimated_value) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted')), 0) AS pipeline_value,
-        COALESCE(SUM(estimated_value) FILTER (WHERE status = 'won'), 0) AS won_value,
-        COALESCE(SUM(evia_fee) FILTER (WHERE status = 'won'), 0) AS won_fees,
-        COUNT(*) FILTER (WHERE status = 'won')::int AS won_count,
-        COUNT(*) FILTER (WHERE status = 'lost')::int AS lost_count
+        COUNT(*) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted') AND dropped_at IS NULL)::int AS active,
+        COUNT(*) FILTER (WHERE status = 'submitted' AND dropped_at IS NULL)::int AS submitted,
+        COALESCE(SUM(estimated_value) FILTER (WHERE status IN ('questionnaire_sent', 'writing', 'submitted') AND dropped_at IS NULL), 0) AS pipeline_value,
+        COALESCE(SUM(estimated_value) FILTER (WHERE status = 'won' AND dropped_at IS NULL), 0) AS won_value,
+        COALESCE(SUM(evia_fee) FILTER (WHERE status = 'won' AND dropped_at IS NULL), 0) AS won_fees,
+        COUNT(*) FILTER (WHERE status = 'won' AND dropped_at IS NULL)::int AS won_count,
+        COUNT(*) FILTER (WHERE status = 'lost' AND dropped_at IS NULL)::int AS lost_count
       FROM tenders
     `);
     const row = result.rows[0];
@@ -140,6 +154,106 @@ router.post('/:id/notes', async (req, res) => {
   }
 });
 
+// POST /api/tenders/:id/drop
+// Move a tender into No Man's Land. Sets dropped_at + drop_reason +
+// drop_note. Status is preserved as the "stage when dropped". Lost
+// tenders can also be dropped (rare but valid: client pulled out
+// after we lost). The badge UI excludes archived from the row list.
+router.post('/:id/drop', async (req, res) => {
+  const { reason, note } = req.body || {};
+  if (!DROP_REASONS.includes(reason)) {
+    return res.status(400).json({ error: 'Invalid drop reason' });
+  }
+  try {
+    const current = await pool.query('SELECT * FROM tenders WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Tender not found' });
+    const tender = current.rows[0];
+    if (tender.dropped_at) {
+      return res.status(400).json({ error: 'Tender is already dropped' });
+    }
+
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+    const result = await pool.query(
+      `UPDATE tenders SET
+        dropped_at = NOW(),
+        drop_reason = $1,
+        drop_note = $2
+       WHERE id = $3
+       RETURNING *`,
+      [reason, trimmedNote || null, req.params.id]
+    );
+
+    const reasonLabel = DROP_REASON_LABELS[reason] || reason;
+    const systemNote = trimmedNote
+      ? `Dropped to No Man's Land: ${reasonLabel}. ${trimmedNote}`
+      : `Dropped to No Man's Land: ${reasonLabel}.`;
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [tender.id, systemNote, req.session.userId]
+    );
+
+    await logActivity(req.session.userId, 'dropped tender', 'tender', tender.id, {
+      title: tender.title,
+      stage_when_dropped: tender.status,
+      reason,
+      note: trimmedNote || null,
+    });
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Drop tender error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/tenders/:id/re-engage
+// Pull a tender out of No Man's Land back to Writing. drop_reason and
+// drop_note are kept on the row as historical.
+router.post('/:id/re-engage', async (req, res) => {
+  try {
+    const current = await pool.query('SELECT * FROM tenders WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Tender not found' });
+    const tender = current.rows[0];
+    if (!tender.dropped_at) {
+      return res.status(400).json({ error: 'Tender is not dropped' });
+    }
+
+    const result = await pool.query(
+      `UPDATE tenders SET
+        dropped_at = NULL,
+        status = 'writing',
+        awaiting_info = FALSE,
+        awaiting_info_note = NULL
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    const reasonLabel = DROP_REASON_LABELS[tender.drop_reason] || tender.drop_reason || 'unknown';
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by)
+       VALUES ($1, $2, 'system', $3)`,
+      [
+        tender.id,
+        `Re-engaged on ${today} from No Man's Land. Original drop reason: ${reasonLabel}.`,
+        req.session.userId,
+      ]
+    );
+
+    await logActivity(req.session.userId, 're-engaged tender', 'tender', tender.id, {
+      title: tender.title,
+      original_drop_reason: tender.drop_reason,
+    });
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Re-engage tender error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/tenders
 router.get('/', async (req, res) => {
   const { view } = req.query;
@@ -171,6 +285,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status IN ('questionnaire_sent', 'writing', 'submitted')
+          AND t.dropped_at IS NULL
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;
     } else if (view === 'results') {
@@ -182,6 +297,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status IN ('won', 'lost')
+          AND t.dropped_at IS NULL
         ORDER BY t.updated_at DESC
       `;
     } else {
@@ -193,6 +309,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN users u ON t.created_by = u.id
         ${latestNoteJoin}
         WHERE t.status NOT IN ('archived', 'prospecting')
+          AND t.dropped_at IS NULL
         ORDER BY t.submission_deadline ASC NULLS LAST
       `;
     }
@@ -231,19 +348,26 @@ router.post('/', async (req, res) => {
   const {
     client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
     portal, reference_number, sector, tender_url, status,
-    assigned_to, notes,
+    assigned_to, notes, awaiting_info, awaiting_info_note,
   } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
 
+  // awaiting_info only meaningful when status === 'writing'; force false
+  // and clear the note otherwise so the column never carries stale data.
+  const isWriting = (status || 'questionnaire_sent') === 'writing';
+  const awaitingInfoVal = isWriting ? !!awaiting_info : false;
+  const awaitingNoteVal = isWriting ? (awaiting_info_note || null) : null;
+
   try {
     const result = await pool.query(
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
-         reference_number, sector, tender_url, status, assigned_to, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         reference_number, sector, tender_url, status, assigned_to, notes, created_by,
+         awaiting_info, awaiting_info_note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         client_id || null,
@@ -261,6 +385,8 @@ router.post('/', async (req, res) => {
         assigned_to || null,
         notes || null,
         req.session.userId,
+        awaitingInfoVal,
+        awaitingNoteVal,
       ]
     );
     const tender = result.rows[0];
@@ -308,6 +434,19 @@ router.put('/:id', async (req, res) => {
     const assignedTo         = 'assigned_to'         in b ? (b.assigned_to || null)        : prev.assigned_to;
     const notes              = 'notes'               in b ? (b.notes || null)              : prev.notes;
 
+    // awaiting_info: only meaningful when status === 'writing'; if the
+    // status moves elsewhere, flush the flag and the note so we don't
+    // surface stale "Awaiting Info" badges on Won/Lost/Submitted rows.
+    let awaitingInfo;
+    let awaitingInfoNote;
+    if (status !== 'writing') {
+      awaitingInfo = false;
+      awaitingInfoNote = null;
+    } else {
+      awaitingInfo     = 'awaiting_info'      in b ? !!b.awaiting_info       : (prev.awaiting_info ?? false);
+      awaitingInfoNote = 'awaiting_info_note' in b ? (b.awaiting_info_note || null) : (prev.awaiting_info_note ?? null);
+    }
+
     const result = await pool.query(
       `UPDATE tenders SET
         client_id           = $1,
@@ -323,10 +462,12 @@ router.put('/:id', async (req, res) => {
         tender_url          = $11,
         status              = $12,
         assigned_to         = $13,
-        notes               = $14
-       WHERE id = $15
+        notes               = $14,
+        awaiting_info       = $15,
+        awaiting_info_note  = $16
+       WHERE id = $17
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, req.params.id]
     );
 
     const tender = result.rows[0];

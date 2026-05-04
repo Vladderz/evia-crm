@@ -9,6 +9,8 @@ import ClientBook from './pages/ClientBook'
 import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
 import ResultsTracker from './pages/ResultsTracker'
+import NoMansLand from './pages/NoMansLand'
+import Playground from './pages/Playground'
 
 export default function App() {
   return (
@@ -17,6 +19,20 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/*
+            Dev-only component sandbox. The Route is always declared
+            so it is reliably picked up by react-router's child
+            traversal; the DEV check gates the rendered element. In a
+            production build Vite resolves import.meta.env.DEV to
+            false at compile time and the ternary collapses to the
+            redirect, so /playground 404s back to / for real users.
+          */}
+          <Route
+            path="/playground"
+            element={
+              import.meta.env.DEV ? <Playground /> : <Navigate to="/" replace />
+            }
+          />
           <Route
             path="/"
             element={
@@ -30,6 +46,7 @@ export default function App() {
             <Route path="pipeline" element={<SalesPipeline />} />
             <Route path="prospected" element={<ContractsProspected />} />
             <Route path="results" element={<ResultsTracker />} />
+            <Route path="no-mans-land" element={<NoMansLand />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

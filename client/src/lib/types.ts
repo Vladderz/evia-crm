@@ -58,6 +58,31 @@ export interface PipelineProspect {
   latest_note_text?: string | null;
   latest_note_date?: string | null;
   latest_note_type?: string | null;
+  /** Drop / No Man's Land state - same semantics as Tender. */
+  dropped_at?: string | null;
+  drop_reason?: DropReason | null;
+  drop_note?: string | null;
+}
+
+/**
+ * Unified row shape returned by GET /api/no-mans-land. Each row is
+ * either a dropped tender or a dropped prospect (sales_pipeline row),
+ * discriminated by `source`. The id is stable per source - frontend
+ * keys must combine them (`${source}-${id}`) to be unique across the
+ * union.
+ */
+export interface NoMansLandRow {
+  source: 'tender' | 'prospect';
+  id: number;
+  company: string | null;
+  contact: string | null;
+  tender_title: string | null;
+  /** The status the row had at the moment it was dropped. */
+  stage_when_dropped: string;
+  drop_reason: DropReason | null;
+  drop_note: string | null;
+  dropped_at: string;
+  last_contact: string | null;
 }
 
 export interface Note {
@@ -79,6 +104,18 @@ export interface PipelineNote {
   created_at: string;
 }
 
+/**
+ * Reasons a tender or prospect can be dropped (paused into No Man's
+ * Land). Backed by check constraints on tenders and sales_pipeline.
+ */
+export type DropReason =
+  | 'not_interested'
+  | 'went_with_other'
+  | 'price_concern'
+  | 'ghosted'
+  | 'timing'
+  | 'other'
+
 export interface Tender {
   id: number
   client_id: number | null
@@ -96,6 +133,21 @@ export interface Tender {
   status: 'questionnaire_sent' | 'writing' | 'submitted' | 'won' | 'lost' | 'archived'
   assigned_to: string | null
   notes: string | null
+  /**
+   * "Awaiting client input" flag - only meaningful when status is
+   * 'writing'. Surfaces as a second amber badge on the row and a
+   * toggle in the Add/Edit drawer.
+   */
+  awaiting_info?: boolean | null
+  awaiting_info_note?: string | null
+  /**
+   * Drop / No Man's Land state. dropped_at is the discriminator; if
+   * set, the row is in No Man's Land regardless of `status`. The row's
+   * `status` is preserved as the "stage when dropped".
+   */
+  dropped_at?: string | null
+  drop_reason?: DropReason | null
+  drop_note?: string | null
   created_by: number | null
   created_by_name: string | null
   created_at: string
