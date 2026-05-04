@@ -9,6 +9,7 @@ import ClientBook from './pages/ClientBook'
 import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
 import ResultsTracker from './pages/ResultsTracker'
+import Playground from './pages/Playground'
 
 export default function App() {
   return (
@@ -17,6 +18,9 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {import.meta.env.DEV && (
+            <Route path="/playground" element={<Playground />} />
+          )}
           <Route
             path="/"
             element={
