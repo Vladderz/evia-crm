@@ -15,7 +15,7 @@ function getInitials(name: string | null | undefined): string {
   return initials || '?';
 }
 
-export function Avatar({ name, size = 24, title }: AvatarProps) {
+export function Avatar({ name, size = 28, title }: AvatarProps) {
   return (
     <span
       className="avatar-v1"

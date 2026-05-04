@@ -7,11 +7,14 @@
      for un-refactored components; cleaned up in Step 10.
      ============================================================ */
 
-  /* Surfaces */
-  --surface-page: #F8F9FB;
+  /* Surfaces - Pipedrive-pivot warmth (2026-05). Soft iris-tinted
+     neutrals, not stark white, not lavender. The page background
+     does most of the heavy lifting toward "friendlier". */
+  --surface-page: #F7F5FA;
   --surface-card: #FFFFFF;
-  --surface-muted: #F3F4F6;
-  --surface-sunken: #EAECF0;
+  --surface-muted: #EFEDF4;
+  --surface-sunken: #E8E4F0;
+  --surface-warm: #FAF8FB;
 
   /* Borders */
   --border-subtle: #E5E7EB;
@@ -61,6 +64,21 @@
   --info: #1D4ED8;
   --info-subtle: #EFF6FF;
   --info-border: #BFDBFE;
+
+  /* Badge palette - Pipedrive-pivot saturated chips. Replaces the
+     subtle-tint scheme on .badge-v1-* variants. */
+  --badge-success-bg:  #DCFCE7;
+  --badge-success-text:#15803D;
+  --badge-warning-bg:  #FEF3C7;
+  --badge-warning-text:#92400E;
+  --badge-danger-bg:   #FEE2E2;
+  --badge-danger-text: #B91C1C;
+  --badge-info-bg:     #DBEAFE;
+  --badge-info-text:   #1E40AF;
+  --badge-brand-bg:    #E9E4F5;
+  --badge-brand-text:  #574D82;
+  --badge-neutral-bg:  #E5E7EB;
+  --badge-neutral-text:#374151;
 
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -2332,53 +2350,29 @@ tr.row-agreed td:first-child {
   display: inline-flex;
   align-items: center;
   font-family: var(--font-sans);
-  font-weight: 500;
-  border-radius: var(--radius-xs);
-  border: 1px solid transparent;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: none;
   white-space: nowrap;
   line-height: 1.2;
 }
 
 .badge-v1-sm {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 12px;
+  padding: 4px 10px;
 }
 
 .badge-v1-md {
-  font-size: 12px;
-  padding: 3px 10px;
+  font-size: 13px;
+  padding: 5px 12px;
 }
 
-.badge-v1-success {
-  background: var(--success-subtle);
-  color: var(--success);
-  border-color: var(--success-border);
-}
-.badge-v1-warning {
-  background: var(--warning-subtle);
-  color: var(--warning);
-  border-color: var(--warning-border);
-}
-.badge-v1-danger {
-  background: var(--danger-subtle);
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-.badge-v1-info {
-  background: var(--info-subtle);
-  color: var(--info);
-  border-color: var(--info-border);
-}
-.badge-v1-brand {
-  background: var(--brand-subtle);
-  color: var(--brand-text);
-  border-color: var(--brand-border);
-}
-.badge-v1-neutral {
-  background: var(--surface-muted);
-  color: var(--text-secondary-v1);
-  border-color: var(--border-subtle);
-}
+.badge-v1-success { background: var(--badge-success-bg); color: var(--badge-success-text); }
+.badge-v1-warning { background: var(--badge-warning-bg); color: var(--badge-warning-text); }
+.badge-v1-danger  { background: var(--badge-danger-bg);  color: var(--badge-danger-text); }
+.badge-v1-info    { background: var(--badge-info-bg);    color: var(--badge-info-text); }
+.badge-v1-brand   { background: var(--badge-brand-bg);   color: var(--badge-brand-text); }
+.badge-v1-neutral { background: var(--badge-neutral-bg); color: var(--badge-neutral-text); }
 
 /* ---------- Button ---------- */
 
@@ -2435,15 +2429,26 @@ tr.row-agreed td:first-child {
   background: var(--brand-primary);
   color: var(--text-inverse);
   border-color: var(--brand-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(87, 77, 130, 0.15);
 }
 .btn-v1-primary:hover:not(:disabled) {
   background: var(--brand-hover);
   border-color: var(--brand-hover);
+  box-shadow: 0 2px 4px rgba(87, 77, 130, 0.20);
 }
 .btn-v1-primary:active:not(:disabled) {
   background: var(--brand-active);
   border-color: var(--brand-active);
+  box-shadow: none;
+  transform: translateY(1px);
 }
+
+/* Primary-specific horizontal padding bump (more confident feel
+   without affecting secondary/ghost/danger). */
+.btn-v1-primary.btn-v1-sm { padding: 0 12px; }
+.btn-v1-primary.btn-v1-md { padding: 0 16px; }
+.btn-v1-primary.btn-v1-lg { padding: 0 18px; }
 
 .btn-v1-secondary {
   background: var(--surface-card);
@@ -2488,13 +2493,14 @@ tr.row-agreed td:first-child {
   align-items: center;
   justify-content: center;
   background: var(--brand-subtle);
-  color: var(--brand-text);
+  color: var(--brand-active);
   font-family: var(--font-sans);
-  font-weight: 600;
+  font-weight: 700;
   border-radius: 50%;
   flex-shrink: 0;
   user-select: none;
   line-height: 1;
+  letter-spacing: 0;
 }
 
 /* ---------- DataTable ---------- */
@@ -2581,11 +2587,14 @@ tr.row-agreed td:first-child {
 .dt-row-clickable { cursor: pointer; }
 
 .dt-row:hover:not(.dt-row-skeleton):not(.dt-row-selected) {
-  background: var(--surface-muted);
+  background: #F2EFF7;
 }
 
 .dt-row-selected {
-  background: var(--brand-subtle);
+  background: var(--badge-brand-bg);
+}
+.dt-row-selected > .dt-td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand-primary);
 }
 
 .dt-row:focus-visible {
@@ -2600,7 +2609,8 @@ tr.row-agreed td:first-child {
 }
 
 .dt-td {
-  padding: 12px;
+  padding: 14px 12px;
+  height: 52px;
   font-size: 13px;
   color: var(--text-secondary-v1);
   vertical-align: middle;
@@ -2702,13 +2712,14 @@ tr.row-agreed td:first-child {
   background: transparent;
   color: var(--text-secondary-v1);
   font-size: 12px;
-  padding: 4px 8px;
-  border-color: var(--border-subtle);
+  font-weight: 500;
+  padding: 5px 10px;
+  border-color: var(--border-default);
 }
 .dt-action-ghost:hover {
   background: var(--surface-muted);
-  color: var(--text-primary-v1);
-  border-color: var(--border-default);
+  color: var(--brand-active);
+  border-color: var(--brand-primary);
 }
 
 /* Brand-tinted ghost link for in-panel "Show more" / "View all" affordances. */
@@ -2739,7 +2750,7 @@ tr.row-agreed td:first-child {
 
 /* Skeleton */
 .dt-row-skeleton > .dt-td {
-  height: 48px;
+  height: 52px;
   border-bottom: 1px solid var(--border-subtle);
 }
 .dt-row-skeleton:last-child > .dt-td {
