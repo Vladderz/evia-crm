@@ -2515,13 +2515,19 @@ tr.row-agreed td:first-child {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-sans);
-  table-layout: auto;
+  /* Fixed layout: column widths are honoured exactly, browser does
+     not auto-size columns based on content. Required so the table
+     fits the container at standard viewports without horizontal
+     scroll. */
+  table-layout: fixed;
 }
 
 .dt-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
+  /* Dates and currency must never break across lines. */
+  white-space: nowrap;
 }
 
 .dt-align-left   { text-align: left; }
@@ -2599,6 +2605,9 @@ tr.row-agreed td:first-child {
   color: var(--text-secondary-v1);
   vertical-align: middle;
   background: inherit;
+  /* Default: keep cell content on one line. Multi-line wrappers
+     (.dt-cell-2line, .dt-date-2line) opt back into normal wrapping. */
+  white-space: nowrap;
 }
 .dt-td:first-child { padding-left: 20px; }
 .dt-td:last-child  { padding-right: 20px; }
@@ -2619,6 +2628,8 @@ tr.row-agreed td:first-child {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  /* Reset the td-level nowrap so primary/secondary lines flow normally. */
+  white-space: normal;
 }
 .dt-cell-2line .dt-cell-primary {
   font-size: 13px;
@@ -2644,9 +2655,22 @@ tr.row-agreed td:first-child {
   font-size: 11px;
   font-family: var(--font-sans);
   margin-left: 4px;
+  white-space: nowrap;
 }
 .dt-date-suffix-overdue { color: var(--danger); }
 .dt-date-suffix-urgent  { color: var(--warning); }
+
+/* 2-line date cell: date on top, suffix chip below.
+   Used when the column is too narrow for date+chip on one line. */
+.dt-date-2line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  white-space: nowrap;
+  min-width: 0;
+}
+.dt-date-2line .dt-date-suffix { margin-left: 0; }
 
 /* Action column inline buttons (specced separately from generic Button) */
 .dt-actions {
@@ -2678,11 +2702,27 @@ tr.row-agreed td:first-child {
   background: transparent;
   color: var(--text-secondary-v1);
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 4px 8px;
+  border-color: var(--border-subtle);
 }
 .dt-action-ghost:hover {
   background: var(--surface-muted);
   color: var(--text-primary-v1);
+  border-color: var(--border-default);
+}
+
+/* Brand-tinted ghost link for in-panel "Show more" / "View all" affordances. */
+.dt-action-link {
+  background: transparent;
+  color: var(--brand-text);
+  font-size: 12px;
+  padding: 4px 0;
+  border-color: transparent;
+}
+.dt-action-link:hover {
+  color: var(--brand-active);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .dt-action-primary {
@@ -2690,9 +2730,11 @@ tr.row-agreed td:first-child {
   color: var(--text-inverse);
   font-size: 11px;
   padding: 4px 8px;
+  border-color: var(--brand-primary);
 }
 .dt-action-primary:hover {
   background: var(--brand-hover);
+  border-color: var(--brand-hover);
 }
 
 /* Skeleton */
@@ -2761,11 +2803,13 @@ tr.row-agreed td:first-child {
 
 .dt-expand-section-title {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-tertiary);
-  margin-bottom: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .dt-expand-timeline {
@@ -2807,11 +2851,12 @@ tr.row-agreed td:first-child {
 .dt-expand-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   align-items: stretch;
 }
 .dt-expand-actions .btn-v1 {
   width: 100%;
+  justify-content: flex-start;
 }
 
 /* Pagination */
@@ -2862,41 +2907,51 @@ tr.row-agreed td:first-child {
    ================================================================ */
 
 .pg-page {
+  display: block;
+  width: 100%;
   font-family: var(--font-sans);
   background: var(--surface-page);
   color: var(--text-primary-v1);
   padding: 32px 24px;
   min-height: 100vh;
+  text-align: left;
 }
 
 .pg-container {
-  max-width: 1400px;
-  margin: 0 auto;
+  display: block;
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .pg-header {
   margin-bottom: 32px;
 }
 .pg-title {
-  font-size: 22px;
+  font-family: var(--font-sans);
+  font-size: 28px;
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary-v1);
+  line-height: var(--leading-tight);
 }
 .pg-subtitle {
   font-size: 13px;
   color: var(--text-tertiary);
-  margin-top: 4px;
+  margin-top: 6px;
+  max-width: 720px;
 }
 
 .pg-section {
   margin-bottom: 40px;
 }
 .pg-section-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--text-primary-v1);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  letter-spacing: var(--tracking-tight);
 }
 .pg-section-note {
   font-size: 12px;

@@ -190,15 +190,14 @@ function ValueCell({ value }: { value: number | null }) {
 
 function AwardCell({ row }: { row: MockTender }) {
   const rel = formatRelativeDays(row.award_date);
+  if (!rel?.tone) {
+    return <span style={{ whiteSpace: 'nowrap' }}>{formatDate(row.award_date)}</span>;
+  }
   return (
-    <span>
-      {formatDate(row.award_date)}
-      {rel?.tone && (
-        <span className={`dt-date-suffix dt-date-suffix-${rel.tone}`}>
-          {' '}· {rel.label}
-        </span>
-      )}
-    </span>
+    <div className="dt-date-2line">
+      <span>{formatDate(row.award_date)}</span>
+      <span className={`dt-date-suffix dt-date-suffix-${rel.tone}`}>{rel.label}</span>
+    </div>
   );
 }
 
@@ -222,12 +221,13 @@ function ActionsCell({ row }: { row: MockTender }) {
       <button type="button" className="dt-action dt-action-ghost">
         <StickyNote size={12} aria-hidden /> Notes
       </button>
-      <button type="button" className="dt-action dt-action-ghost">
-        <Pencil size={12} aria-hidden /> Edit
-      </button>
-      {showMarkWon && (
+      {showMarkWon ? (
         <button type="button" className="dt-action dt-action-primary">
           <Check size={12} aria-hidden /> Mark Won
+        </button>
+      ) : (
+        <button type="button" className="dt-action dt-action-ghost">
+          <Pencil size={12} aria-hidden /> Edit
         </button>
       )}
     </span>
@@ -260,8 +260,8 @@ function ExpandPanel({ row }: { row: MockTender }) {
             <span className="dt-expand-timeline-date">{formatDate('2026-04-15')}</span>
             <span>Tender created</span>
           </div>
-          <div style={{ marginTop: 8 }}>
-            <button type="button" className="dt-action dt-action-ghost">Show more</button>
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="dt-action dt-action-link">Show more</button>
           </div>
         </div>
       </div>
@@ -282,8 +282,8 @@ function ExpandPanel({ row }: { row: MockTender }) {
           Spoke to Sarah - they want a single-page case study on the Cardiff job included
           as appendix. Will pull from the won portfolio.
         </div>
-        <div style={{ marginTop: 8 }}>
-          <button type="button" className="dt-action dt-action-ghost">View all notes</button>
+        <div style={{ marginTop: 12 }}>
+          <button type="button" className="dt-action dt-action-link">View all notes</button>
         </div>
       </div>
 
@@ -315,20 +315,20 @@ function buildColumns(): Column<MockTender>[] {
     {
       key: 'status',
       header: 'Status',
-      width: 200,
+      width: 180,
       render: row => <StatusCell row={row} />,
     },
     {
       key: 'client',
       header: 'Client',
-      width: 160,
-      maxWidth: 160,
+      width: 120,
+      maxWidth: 120,
       render: row => <TruncatedText>{row.client}</TruncatedText>,
     },
     {
       key: 'value',
       header: 'Value',
-      width: 110,
+      width: 100,
       align: 'right',
       mono: true,
       render: row => <ValueCell value={row.value} />,
@@ -336,7 +336,7 @@ function buildColumns(): Column<MockTender>[] {
     {
       key: 'fee',
       header: 'Fee',
-      width: 90,
+      width: 80,
       align: 'right',
       mono: true,
       render: row => <ValueCell value={row.fee} />,
@@ -344,27 +344,27 @@ function buildColumns(): Column<MockTender>[] {
     {
       key: 'submission',
       header: 'Submission',
-      width: 110,
+      width: 100,
       mono: true,
       render: row => formatDate(row.submission_deadline),
     },
     {
       key: 'award',
       header: 'Award',
-      width: 150,
+      width: 130,
       mono: true,
       render: row => <AwardCell row={row} />,
     },
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 110,
+      width: 90,
       render: row => <AssignedCell row={row} />,
     },
     {
       key: 'actions',
       header: '',
-      width: 200,
+      width: 180,
       align: 'right',
       render: row => <ActionsCell row={row} />,
     },
