@@ -486,9 +486,15 @@ export default function Playground() {
   const drawerOpen = drawerInitial !== undefined;
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: MOCK_TENDERS.length };
+    const c: Record<string, number> = { all: 0 };
     for (const t of MOCK_TENDERS) {
       c[t.status] = (c[t.status] ?? 0) + 1;
+      // "All" means all currently-active stages, matching the
+      // Active Tenders KPI tile. Won/Lost/Archived live in their
+      // own tabs and are not part of the All count.
+      if (t.status !== 'won' && t.status !== 'lost' && t.status !== 'archived') {
+        c.all = (c.all ?? 0) + 1;
+      }
     }
     return c;
   }, []);
@@ -519,7 +525,14 @@ export default function Playground() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return MOCK_TENDERS.filter(t => {
-      if (stage !== 'all' && t.status !== stage) return false;
+      if (stage === 'all') {
+        // "All" = active stages only, matching the Active Tenders KPI tile.
+        if (t.status === 'won' || t.status === 'lost' || t.status === 'archived') {
+          return false;
+        }
+      } else if (t.status !== stage) {
+        return false;
+      }
       if (assigned && t.assigned_to !== assigned) return false;
       if (q) {
         const hay = `${t.title} ${t.client} ${t.reference}`.toLowerCase();
@@ -714,7 +727,6 @@ export default function Playground() {
           />
           <Input
             label="Reference code"
-            placeholder="SKDC-1629"
             error="A reference is required"
             defaultValue=""
           />

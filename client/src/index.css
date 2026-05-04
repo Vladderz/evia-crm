@@ -3090,19 +3090,21 @@ tr.row-agreed td:first-child {
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
-  /* Fixed container so the logo never upscales beyond its source. */
   height: 72px;
   flex-shrink: 0;
 }
 .sidebar-brand-logo {
+  /* Fixed height with width: auto is the standard pattern that
+     triggers aspect-ratio scaling on <img>. max-height alone with
+     width: auto does NOT scale the width - it leaves it at the
+     intrinsic value and squashes the image. Height stays at 32px
+     so we never upscale past the source.
+
+     The source is 1448x1086, so with height 32 the rendered width
+     is ~43px - well within the 180px sidebar content area. */
   display: block;
-  /* Cap height at 32px; width auto-derives from the source aspect
-     ratio. object-fit: contain on the whole element ensures we
-     never blow it up beyond its source resolution. */
-  max-height: 32px;
-  max-width: 100%;
+  height: 32px;
   width: auto;
-  height: auto;
   object-fit: contain;
 }
 
@@ -3339,8 +3341,8 @@ tr.row-agreed td:first-child {
 }
 
 .kpi-tile-icon {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-lg);
   display: inline-flex;
   align-items: center;
