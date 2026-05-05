@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   AlertCircle,
   Calendar,
@@ -164,10 +165,18 @@ function FollowUpCell({ row }: { row: PipelineProspect }) {
 function AssignedCell({ row }: { row: PipelineProspect }) {
   if (!row.assigned_to) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <Avatar name={row.assigned_to} />
-      <span style={{ fontSize: 13 }}>{row.assigned_to}</span>
-    </span>
+    <Tooltip.Root delayDuration={300}>
+      <Tooltip.Trigger asChild>
+        <span style={{ display: 'inline-flex' }}>
+          <Avatar name={row.assigned_to} />
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className="dt-tooltip" sideOffset={4} collisionPadding={8}>
+          {row.assigned_to}
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
   );
 }
 
@@ -580,7 +589,8 @@ export default function SalesPipeline() {
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 100,
+      width: 72,
+      align: 'center',
       render: row => <AssignedCell row={row} />,
     },
     {
