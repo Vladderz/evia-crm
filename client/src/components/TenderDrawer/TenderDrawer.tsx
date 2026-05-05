@@ -76,8 +76,14 @@ const STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived' },
 ];
 
+// Radix Select.Item forbids value="". Sentinels stand in for the
+// "unset" options in the dropdown; we translate back to '' before
+// the value lands in form state, so the API payload is unchanged.
+const UNASSIGNED_SENTINEL = '__unassigned__';
+const NO_CLIENT_SENTINEL = '__no_client__';
+
 const ASSIGNEE_OPTIONS = [
-  { value: '', label: 'Unassigned' },
+  { value: UNASSIGNED_SENTINEL, label: 'Unassigned' },
   { value: 'Vlad', label: 'Vlad' },
   { value: 'Tristan', label: 'Tristan' },
   { value: 'Both', label: 'Both' },
@@ -161,7 +167,7 @@ export function TenderDrawer({
   const awaitingDisabled = form.status !== 'writing';
 
   const clientOptions = [
-    { value: '', label: 'No client' },
+    { value: NO_CLIENT_SENTINEL, label: 'No client' },
     ...clients.map(c => ({ value: String(c.id), label: c.name })),
   ];
 
@@ -287,8 +293,8 @@ export function TenderDrawer({
 
         <Select
           label="Client"
-          value={form.client_id}
-          onValueChange={v => update('client_id', v)}
+          value={form.client_id || NO_CLIENT_SENTINEL}
+          onValueChange={v => update('client_id', v === NO_CLIENT_SENTINEL ? '' : v)}
           options={clientOptions}
           placeholder="Choose a client"
         />
@@ -333,8 +339,8 @@ export function TenderDrawer({
 
         <Select
           label="Assigned to"
-          value={form.assigned_to}
-          onValueChange={v => update('assigned_to', v)}
+          value={form.assigned_to || UNASSIGNED_SENTINEL}
+          onValueChange={v => update('assigned_to', v === UNASSIGNED_SENTINEL ? '' : v)}
           options={ASSIGNEE_OPTIONS}
           placeholder="Unassigned"
         />

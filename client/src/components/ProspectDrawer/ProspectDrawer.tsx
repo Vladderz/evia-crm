@@ -64,8 +64,13 @@ const STATUS_OPTIONS = [
   { value: 'call_booked', label: 'Call Booked' },
 ];
 
+// Radix Select.Item forbids value="". Sentinel stands in for the
+// "Unassigned" option in the dropdown; we translate back to '' before
+// the value lands in form state, so the API payload is unchanged.
+const UNASSIGNED_SENTINEL = '__unassigned__';
+
 const ASSIGNEE_OPTIONS = [
-  { value: '', label: 'Unassigned' },
+  { value: UNASSIGNED_SENTINEL, label: 'Unassigned' },
   { value: 'Vlad', label: 'Vlad' },
   { value: 'Tristan', label: 'Tristan' },
   { value: 'Both', label: 'Both' },
@@ -261,8 +266,8 @@ export function ProspectDrawer({
 
         <Select
           label="Assigned to"
-          value={form.assigned_to}
-          onValueChange={v => update('assigned_to', v)}
+          value={form.assigned_to || UNASSIGNED_SENTINEL}
+          onValueChange={v => update('assigned_to', v === UNASSIGNED_SENTINEL ? '' : v)}
           options={ASSIGNEE_OPTIONS}
           placeholder="Unassigned"
         />
