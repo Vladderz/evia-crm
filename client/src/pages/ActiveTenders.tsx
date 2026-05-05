@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Banknote,
   Check,
+  Clock,
   FileText,
   Pencil,
   Plus,
@@ -39,6 +40,7 @@ import {
 } from '../components/TenderDrawer/TenderDrawer';
 import { DropDialog } from '../components/DropDialog/DropDialog';
 import { MarkLostDialog } from '../components/MarkLostDialog/MarkLostDialog';
+import { AwaitingInfoDialog } from '../components/AwaitingInfoDialog/AwaitingInfoDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -137,7 +139,9 @@ function TenderCell({ row }: { row: Tender }) {
 }
 
 function StatusCell({ row }: { row: Tender }) {
-  const showAwaiting = row.status === 'writing' && row.awaiting_info === true;
+  const showAwaiting =
+    (row.status === 'writing' || row.status === 'questionnaire_sent') &&
+    row.awaiting_info === true;
   const awaitingTooltip = row.awaiting_info_note?.trim() || 'Waiting on client input';
   return (
     <div className="status-stack">
@@ -201,6 +205,7 @@ interface ActionsCellProps {
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
   onMarkLost: (t: Tender) => void;
+  onToggleAwaiting: (t: Tender) => void;
   onDrop: (t: Tender) => void;
 }
 
@@ -210,7 +215,9 @@ interface ActionsCellProps {
  * available. Drop is always available. The funnel is
  * Questionnaire Sent -> Writing -> Submitted; the buttons mirror
  * that direction (forward = ArrowRight, backward = ArrowLeft). */
-function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: ActionsCellProps) {
+function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwaiting, onDrop }: ActionsCellProps) {
+  const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
+  const awaitingOn = inActiveStage && row.awaiting_info === true;
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
       <button
@@ -227,6 +234,17 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: Ac
       >
         <Pencil size={12} aria-hidden /> Edit
       </button>
+
+      {inActiveStage && (
+        <button
+          type="button"
+          className={`dt-action dt-action-awaiting${awaitingOn ? ' dt-action-awaiting-active' : ''}`}
+          title={awaitingOn ? 'Clear awaiting-info status' : 'Mark this tender as awaiting client info'}
+          onClick={() => onToggleAwaiting(row)}
+        >
+          <Clock size={12} aria-hidden /> {awaitingOn ? 'Clear Awaiting Info' : 'Mark Awaiting Info'}
+        </button>
+      )}
 
       {row.status === 'questionnaire_sent' && (
         <>
@@ -447,6 +465,7 @@ export default function ActiveTenders() {
   const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null);
   const [dropTarget, setDropTarget] = useState<Tender | null>(null);
   const [markLostTarget, setMarkLostTarget] = useState<Tender | null>(null);
+  const [awaitingInfoTarget, setAwaitingInfoTarget] = useState<Tender | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -611,6 +630,40 @@ export default function ActiveTenders() {
     }
   }
 
+  function handleToggleAwaiting(t: Tender) {
+    if (t.awaiting_info === true) {
+      // One-click clear - no dialog.
+      void api
+        .put(`/tenders/${t.id}`, { awaiting_info: false, awaiting_info_note: null })
+        .then(() => {
+          toast.success(`${t.title} - awaiting info cleared`);
+          fetchData();
+        })
+        .catch(() => {
+          toast.error('Failed to clear awaiting info. Please try again.');
+        });
+    } else {
+      // Open the dialog to capture the required note.
+      setAwaitingInfoTarget(t);
+    }
+  }
+
+  async function handleAwaitingInfoConfirm({ note }: { note: string }) {
+    if (!awaitingInfoTarget) return;
+    const target = awaitingInfoTarget;
+    try {
+      await api.put(`/tenders/${target.id}`, {
+        awaiting_info: true,
+        awaiting_info_note: note,
+      });
+      toast.success(`${target.title} marked as awaiting info`);
+      setAwaitingInfoTarget(null);
+      fetchData();
+    } catch {
+      toast.error('Failed to mark awaiting info. Please try again.');
+    }
+  }
+
   async function handleMarkLostConfirm({ lossNote }: { lossNote: string }) {
     if (!markLostTarget) return;
     const target = markLostTarget;
@@ -747,7 +800,7 @@ export default function ActiveTenders() {
     {
       key: 'actions',
       header: '',
-      width: 560,
+      width: 680,
       align: 'right',
       render: row => (
         <ActionsCell
@@ -756,6 +809,7 @@ export default function ActiveTenders() {
           onNotes={t => openNotes({ id: t.id, title: t.title })}
           onAdvance={handleAdvance}
           onMarkLost={t => setMarkLostTarget(t)}
+          onToggleAwaiting={handleToggleAwaiting}
           onDrop={t => setDropTarget(t)}
         />
       ),
@@ -898,6 +952,13 @@ export default function ActiveTenders() {
         tenderTitle={markLostTarget?.title ?? ''}
         onClose={() => setMarkLostTarget(null)}
         onConfirm={handleMarkLostConfirm}
+      />
+
+      <AwaitingInfoDialog
+        open={awaitingInfoTarget !== null}
+        tenderTitle={awaitingInfoTarget?.title ?? ''}
+        onClose={() => setAwaitingInfoTarget(null)}
+        onConfirm={handleAwaitingInfoConfirm}
       />
 
       <NotesPanel

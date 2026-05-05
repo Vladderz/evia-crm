@@ -4069,6 +4069,33 @@ textarea.field-control {
   border-color: var(--danger-border);
 }
 
+/* Awaiting Info toggle - slate ghost in the off state, amber-tinted
+   when the row's awaiting_info flag is on. Mirrors the amber badge
+   so a glance at the row tells you whether we're blocked on client
+   input. */
+.dt-action-awaiting {
+  background: transparent;
+  color: var(--text-secondary-v1);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-color: var(--border-default);
+}
+.dt-action-awaiting:hover {
+  background: var(--warning-subtle);
+  color: var(--warning);
+  border-color: var(--warning-border);
+}
+.dt-action-awaiting.dt-action-awaiting-active {
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+  border-color: var(--badge-warning-dot);
+}
+.dt-action-awaiting.dt-action-awaiting-active:hover {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
 /* Danger-toned action button - mirrors dt-action-primary visually
    but in danger red. Used for Mark Lost on submitted tender rows so
    the Won / Lost outcomes sit side-by-side with equal weight. */

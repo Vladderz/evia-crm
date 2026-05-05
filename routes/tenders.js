@@ -446,12 +446,15 @@ router.put('/:id', async (req, res) => {
       lossNote = 'loss_note' in b ? (b.loss_note || null) : (prev.loss_note ?? null);
     }
 
-    // awaiting_info: only meaningful when status === 'writing'; if the
-    // status moves elsewhere, flush the flag and the note so we don't
-    // surface stale "Awaiting Info" badges on Won/Lost/Submitted rows.
+    // awaiting_info: meaningful only while we're actively pursuing the
+    // tender, i.e. status in ('questionnaire_sent', 'writing'). If the
+    // status moves outside that window, flush the flag and note so we
+    // don't surface stale "Awaiting Info" badges on
+    // Submitted / Won / Lost rows.
+    const awaitingInfoStages = status === 'questionnaire_sent' || status === 'writing';
     let awaitingInfo;
     let awaitingInfoNote;
-    if (status !== 'writing') {
+    if (!awaitingInfoStages) {
       awaitingInfo = false;
       awaitingInfoNote = null;
     } else {

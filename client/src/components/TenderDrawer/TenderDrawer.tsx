@@ -141,8 +141,11 @@ export function TenderDrawer({
   function handleStatusChange(value: string) {
     setForm(prev => {
       const next = { ...prev, status: value as TenderStatus };
-      // Clear awaiting_info if moving away from writing
-      if (value !== 'writing') {
+      // Clear awaiting_info if moving outside the active funnel.
+      // The flag is meaningful while the row is in Questionnaire Sent
+      // or Writing; on Submitted / Won / Lost / Archived it is forced
+      // off (server enforces the same rule on PUT).
+      if (value !== 'questionnaire_sent' && value !== 'writing') {
         next.awaiting_info = false;
         next.awaiting_info_note = '';
       }
@@ -164,7 +167,8 @@ export function TenderDrawer({
     }
   }
 
-  const awaitingDisabled = form.status !== 'writing';
+  const awaitingDisabled =
+    form.status !== 'questionnaire_sent' && form.status !== 'writing';
 
   const clientOptions = [
     { value: NO_CLIENT_SENTINEL, label: 'No client' },
@@ -324,7 +328,7 @@ export function TenderDrawer({
             label="Awaiting info from client"
             hint={
               awaitingDisabled
-                ? 'Only available when status is Writing'
+                ? 'Only available while status is Questionnaire Sent or Writing'
                 : 'Pauses progress visibly until you have what you need'
             }
           />
