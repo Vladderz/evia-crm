@@ -549,14 +549,14 @@ export default function SalesPipeline() {
       key: 'company',
       header: 'Company',
       width: 'flex',
-      maxWidth: 240,
+      maxWidth: 200,
       render: row => <CompanyCell row={row} />,
     },
     {
       key: 'tender',
       header: 'Tender',
       width: 'flex',
-      maxWidth: 320,
+      maxWidth: 260,
       render: row => <TenderCell row={row} />,
     },
     {
@@ -589,7 +589,7 @@ export default function SalesPipeline() {
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 72,
+      width: 96,
       align: 'center',
       render: row => <AssignedCell row={row} />,
     },
