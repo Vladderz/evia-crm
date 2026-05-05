@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   ArrowLeft,
+  ArrowRight,
   Banknote,
   Check,
   FileText,
-  HelpCircle,
   Pencil,
   Plus,
   Send,
@@ -72,8 +72,8 @@ const STATUS_HAS_DOT: Record<string, boolean> = {
 
 const STAGE_TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'writing', label: 'Writing' },
   { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
+  { key: 'writing', label: 'Writing' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'won', label: 'Won' },
   { key: 'lost', label: 'Lost' },
@@ -189,10 +189,12 @@ interface ActionsCellProps {
   onDrop: (t: Tender) => void;
 }
 
-/* Stage transitions are one-click. Mark Won stays one-click (already
- * was). Mark Lost gets a small confirm dialog with an optional reason
- * note - it's terminal and worth the friction. Edit and Notes are
- * always available. Drop is always available. */
+/* Stage transitions are one-click. Mark Won stays one-click. Mark
+ * Lost opens a small confirm dialog with an optional reason note -
+ * it's terminal and worth the friction. Edit and Notes are always
+ * available. Drop is always available. The funnel is
+ * Questionnaire Sent -> Writing -> Submitted; the buttons mirror
+ * that direction (forward = ArrowRight, backward = ArrowLeft). */
 function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: ActionsCellProps) {
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
@@ -211,14 +213,14 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: Ac
         <Pencil size={12} aria-hidden /> Edit
       </button>
 
-      {row.status === 'writing' && (
+      {row.status === 'questionnaire_sent' && (
         <>
           <button
             type="button"
             className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'questionnaire_sent')}
+            onClick={() => onAdvance(row, 'writing')}
           >
-            <HelpCircle size={12} aria-hidden /> Send Questionnaire
+            <ArrowRight size={12} aria-hidden /> Move to Writing
           </button>
           <button
             type="button"
@@ -229,14 +231,14 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: Ac
           </button>
         </>
       )}
-      {row.status === 'questionnaire_sent' && (
+      {row.status === 'writing' && (
         <>
           <button
             type="button"
             className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'writing')}
+            onClick={() => onAdvance(row, 'questionnaire_sent')}
           >
-            <ArrowLeft size={12} aria-hidden /> Back to Writing
+            <ArrowLeft size={12} aria-hidden /> Back to Questionnaire
           </button>
           <button
             type="button"
@@ -249,6 +251,13 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: Ac
       )}
       {row.status === 'submitted' && (
         <>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row, 'writing')}
+          >
+            <ArrowLeft size={12} aria-hidden /> Back to Writing
+          </button>
           <button
             type="button"
             className="dt-action dt-action-primary"
@@ -402,7 +411,7 @@ export default function ActiveTenders() {
   const [loadError, setLoadError] = useState(false);
 
   /* Filters */
-  const [stage, setStage] = useState<string>('writing');
+  const [stage, setStage] = useState<string>('questionnaire_sent');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
@@ -701,14 +710,14 @@ export default function ActiveTenders() {
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 56,
+      width: 72,
       align: 'center',
       render: row => <AssignedCell row={row} />,
     },
     {
       key: 'actions',
       header: '',
-      width: 460,
+      width: 560,
       align: 'right',
       render: row => (
         <ActionsCell

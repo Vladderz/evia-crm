@@ -462,8 +462,8 @@ function tenderToForm(t: MockTender): Partial<TenderFormValues> {
 
 const STAGE_TABS = [
   { key: 'all', label: 'All' },
-  { key: 'writing', label: 'Writing' },
   { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
+  { key: 'writing', label: 'Writing' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'won', label: 'Won' },
   { key: 'lost', label: 'Lost' },
@@ -474,7 +474,7 @@ const STAGE_TABS = [
  * ----------------------------------------------------------------- */
 
 export default function Playground() {
-  const [stage, setStage] = useState<string>('writing');
+  const [stage, setStage] = useState<string>('questionnaire_sent');
   const [search, setSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>('t1');

@@ -60,7 +60,7 @@ const EMPTY: TenderFormValues = {
   reference_number: '',
   sector: '',
   client_id: '',
-  status: 'writing',
+  status: 'questionnaire_sent',
   awaiting_info: false,
   awaiting_info_note: '',
   assigned_to: '',
@@ -68,8 +68,8 @@ const EMPTY: TenderFormValues = {
 };
 
 const STATUS_OPTIONS = [
-  { value: 'writing', label: 'Writing' },
   { value: 'questionnaire_sent', label: 'Questionnaire Sent' },
+  { value: 'writing', label: 'Writing' },
   { value: 'submitted', label: 'Submitted' },
   { value: 'won', label: 'Won' },
   { value: 'lost', label: 'Lost' },
