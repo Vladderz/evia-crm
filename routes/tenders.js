@@ -433,6 +433,14 @@ router.put('/:id', async (req, res) => {
     const status             = b.status              || prev.status;
     const assignedTo         = 'assigned_to'         in b ? (b.assigned_to || null)        : prev.assigned_to;
     const notes              = 'notes'               in b ? (b.notes || null)              : prev.notes;
+    // loss_note is captured by the Mark Lost row action; if status moves
+    // away from 'lost' later, flush the note so it doesn't haunt the row.
+    let lossNote;
+    if (status !== 'lost') {
+      lossNote = null;
+    } else {
+      lossNote = 'loss_note' in b ? (b.loss_note || null) : (prev.loss_note ?? null);
+    }
 
     // awaiting_info: only meaningful when status === 'writing'; if the
     // status moves elsewhere, flush the flag and the note so we don't
@@ -464,10 +472,11 @@ router.put('/:id', async (req, res) => {
         assigned_to         = $13,
         notes               = $14,
         awaiting_info       = $15,
-        awaiting_info_note  = $16
-       WHERE id = $17
+        awaiting_info_note  = $16,
+        loss_note           = $17
+       WHERE id = $18
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, req.params.id]
     );
 
     const tender = result.rows[0];

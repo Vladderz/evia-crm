@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import {
+  ArrowLeft,
   Banknote,
   Check,
   FileText,
+  HelpCircle,
   Pencil,
   Plus,
   Send,
   StickyNote,
   Target,
   Trophy,
+  X,
 } from 'lucide-react';
 import api from '../lib/api';
 import type { Client, Tender, DropReason } from '../lib/types';
@@ -34,6 +38,7 @@ import {
   type TenderStatus,
 } from '../components/TenderDrawer/TenderDrawer';
 import { DropDialog } from '../components/DropDialog/DropDialog';
+import { MarkLostDialog } from '../components/MarkLostDialog/MarkLostDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -160,10 +165,18 @@ function SubmissionCell({ row }: { row: Tender }) {
 function AssignedCell({ row }: { row: Tender }) {
   if (!row.assigned_to) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <Avatar name={row.assigned_to} />
-      <span style={{ fontSize: 13 }}>{row.assigned_to}</span>
-    </span>
+    <Tooltip.Root delayDuration={300}>
+      <Tooltip.Trigger asChild>
+        <span style={{ display: 'inline-flex' }}>
+          <Avatar name={row.assigned_to} />
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className="dt-tooltip" sideOffset={4} collisionPadding={8}>
+          {row.assigned_to}
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
   );
 }
 
@@ -172,11 +185,15 @@ interface ActionsCellProps {
   onEdit: (t: Tender) => void;
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
+  onMarkLost: (t: Tender) => void;
   onDrop: (t: Tender) => void;
 }
 
-function ActionsCell({ row, onEdit, onNotes, onAdvance, onDrop }: ActionsCellProps) {
-  const showMarkWon = row.status === 'submitted';
+/* Stage transitions are one-click. Mark Won stays one-click (already
+ * was). Mark Lost gets a small confirm dialog with an optional reason
+ * note - it's terminal and worth the friction. Edit and Notes are
+ * always available. Drop is always available. */
+function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onDrop }: ActionsCellProps) {
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
       <button
@@ -186,23 +203,69 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onDrop }: ActionsCellPro
       >
         <StickyNote size={12} aria-hidden /> Notes
       </button>
-      {showMarkWon ? (
-        <button
-          type="button"
-          className="dt-action dt-action-primary"
-          onClick={() => onAdvance(row, 'won')}
-        >
-          <Check size={12} aria-hidden /> Mark Won
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="dt-action dt-action-ghost"
-          onClick={() => onEdit(row)}
-        >
-          <Pencil size={12} aria-hidden /> Edit
-        </button>
+      <button
+        type="button"
+        className="dt-action dt-action-ghost"
+        onClick={() => onEdit(row)}
+      >
+        <Pencil size={12} aria-hidden /> Edit
+      </button>
+
+      {row.status === 'writing' && (
+        <>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row, 'questionnaire_sent')}
+          >
+            <HelpCircle size={12} aria-hidden /> Send Questionnaire
+          </button>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row, 'submitted')}
+          >
+            <Send size={12} aria-hidden /> Mark Submitted
+          </button>
+        </>
       )}
+      {row.status === 'questionnaire_sent' && (
+        <>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row, 'writing')}
+          >
+            <ArrowLeft size={12} aria-hidden /> Back to Writing
+          </button>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row, 'submitted')}
+          >
+            <Send size={12} aria-hidden /> Mark Submitted
+          </button>
+        </>
+      )}
+      {row.status === 'submitted' && (
+        <>
+          <button
+            type="button"
+            className="dt-action dt-action-primary"
+            onClick={() => onAdvance(row, 'won')}
+          >
+            <Check size={12} aria-hidden /> Mark Won
+          </button>
+          <button
+            type="button"
+            className="dt-action dt-action-danger"
+            onClick={() => onMarkLost(row)}
+          >
+            <X size={12} aria-hidden /> Mark Lost
+          </button>
+        </>
+      )}
+
       <button
         type="button"
         className="dt-action dt-action-drop"
@@ -359,6 +422,7 @@ export default function ActiveTenders() {
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null);
   const [dropTarget, setDropTarget] = useState<Tender | null>(null);
+  const [markLostTarget, setMarkLostTarget] = useState<Tender | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -523,6 +587,22 @@ export default function ActiveTenders() {
     }
   }
 
+  async function handleMarkLostConfirm({ lossNote }: { lossNote: string }) {
+    if (!markLostTarget) return;
+    const target = markLostTarget;
+    try {
+      await api.put(`/tenders/${target.id}`, {
+        status: 'lost',
+        loss_note: lossNote || null,
+      });
+      toast.success(`${target.title} marked as Lost`);
+      setMarkLostTarget(null);
+      fetchData();
+    } catch {
+      toast.error('Failed to mark as Lost. Please try again.');
+    }
+  }
+
   async function handleDropConfirm({ reason, note }: { reason: DropReason; note: string }) {
     if (!dropTarget) return;
     const target = dropTarget;
@@ -621,13 +701,14 @@ export default function ActiveTenders() {
     {
       key: 'assigned',
       header: 'Assigned',
-      width: 100,
+      width: 56,
+      align: 'center',
       render: row => <AssignedCell row={row} />,
     },
     {
       key: 'actions',
       header: '',
-      width: 220,
+      width: 460,
       align: 'right',
       render: row => (
         <ActionsCell
@@ -635,6 +716,7 @@ export default function ActiveTenders() {
           onEdit={openEdit}
           onNotes={t => openNotes({ id: t.id, title: t.title })}
           onAdvance={handleAdvance}
+          onMarkLost={t => setMarkLostTarget(t)}
           onDrop={t => setDropTarget(t)}
         />
       ),
@@ -770,6 +852,13 @@ export default function ActiveTenders() {
         entityKind="tender"
         onClose={() => setDropTarget(null)}
         onConfirm={handleDropConfirm}
+      />
+
+      <MarkLostDialog
+        open={markLostTarget !== null}
+        tenderTitle={markLostTarget?.title ?? ''}
+        onClose={() => setMarkLostTarget(null)}
+        onConfirm={handleMarkLostConfirm}
       />
 
       <NotesPanel

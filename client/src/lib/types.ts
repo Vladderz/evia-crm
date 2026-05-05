@@ -148,6 +148,8 @@ export interface Tender {
   dropped_at?: string | null
   drop_reason?: DropReason | null
   drop_note?: string | null
+  /** Optional free-text reason captured when Mark Lost is used. */
+  loss_note?: string | null
   created_by: number | null
   created_by_name: string | null
   created_at: string

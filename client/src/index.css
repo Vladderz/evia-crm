@@ -4051,6 +4051,22 @@ textarea.field-control {
   border-color: var(--danger-border);
 }
 
+/* Danger-toned action button - mirrors dt-action-primary visually
+   but in danger red. Used for Mark Lost on submitted tender rows so
+   the Won / Lost outcomes sit side-by-side with equal weight. */
+.dt-action-danger {
+  background: transparent;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-color: var(--danger-border);
+}
+.dt-action-danger:hover {
+  background: var(--badge-danger-bg);
+  border-color: var(--danger);
+}
+
 /* ================================================================
    LEGACY COMPONENTS RESTYLED (ConfirmDialog + ToastProvider use
    these classes - retune to new visual language without changing
