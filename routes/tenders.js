@@ -278,7 +278,8 @@ router.get('/', async (req, res) => {
 
     if (view === 'live') {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+        SELECT t.*, c.company_name AS client_name, c.website AS client_website,
+          u.name AS created_by_name,
           ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
@@ -290,7 +291,8 @@ router.get('/', async (req, res) => {
       `;
     } else if (view === 'results') {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+        SELECT t.*, c.company_name AS client_name, c.website AS client_website,
+          u.name AS created_by_name,
           ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
@@ -302,7 +304,8 @@ router.get('/', async (req, res) => {
       `;
     } else {
       query = `
-        SELECT t.*, c.company_name AS client_name, u.name AS created_by_name,
+        SELECT t.*, c.company_name AS client_name, c.website AS client_website,
+          u.name AS created_by_name,
           ${noteSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
@@ -326,7 +329,8 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT t.*, c.company_name AS client_name, u.name AS created_by_name
+      `SELECT t.*, c.company_name AS client_name, c.website AS client_website,
+              u.name AS created_by_name
        FROM tenders t
        LEFT JOIN clients c ON t.client_id = c.id
        LEFT JOIN users u ON t.created_by = u.id

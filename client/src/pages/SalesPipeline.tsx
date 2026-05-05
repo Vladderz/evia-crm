@@ -110,11 +110,26 @@ function prospectToForm(p: PipelineProspect): Partial<ProspectFormValues> {
  * ----------------------------------------------------------------- */
 
 function CompanyCell({ row }: { row: PipelineProspect }) {
+  const nameSpan = (
+    <span className="dt-cell-primary">
+      <TruncatedText>{row.company_name}</TruncatedText>
+    </span>
+  );
   return (
     <div className="dt-cell-2line">
-      <span className="dt-cell-primary">
-        <TruncatedText>{row.company_name}</TruncatedText>
-      </span>
+      {row.website ? (
+        <a
+          href={row.website}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="dt-link"
+        >
+          {nameSpan}
+        </a>
+      ) : (
+        nameSpan
+      )}
       {row.contact_name && (
         <span className="dt-cell-secondary dt-cell-secondary-sans">
           {row.contact_name}
@@ -128,11 +143,26 @@ function TenderCell({ row }: { row: PipelineProspect }) {
   if (!row.tender_title) {
     return <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>-</span>;
   }
+  const titleSpan = (
+    <span className="dt-cell-primary">
+      <TruncatedText>{row.tender_title}</TruncatedText>
+    </span>
+  );
   return (
     <div className="dt-cell-2line">
-      <span className="dt-cell-primary">
-        <TruncatedText>{row.tender_title}</TruncatedText>
-      </span>
+      {row.tender_url ? (
+        <a
+          href={row.tender_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="dt-link"
+        >
+          {titleSpan}
+        </a>
+      ) : (
+        titleSpan
+      )}
       {row.buyer && (
         <span className="dt-cell-secondary dt-cell-secondary-sans">
           {row.buyer}

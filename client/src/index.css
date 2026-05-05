@@ -2726,6 +2726,24 @@ tr.row-agreed td:first-child {
   font-family: var(--font-sans);
 }
 
+/* Inline anchor for cell content (company name, tender title) that
+   opens an external URL in a new tab. Subtle by default - underline
+   on hover only. The inner .dt-cell-primary span inherits color from
+   the anchor so it picks up link styling without losing its existing
+   weight/size/truncation rules. */
+.dt-link {
+  color: var(--brand-text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dt-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dt-link .dt-cell-primary {
+  color: inherit;
+}
+
 /* Inline date suffix for overdue/countdown chips */
 .dt-date-suffix {
   font-size: 11px;

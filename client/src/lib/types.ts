@@ -120,6 +120,7 @@ export interface Tender {
   id: number
   client_id: number | null
   client_name: string | null
+  client_website: string | null
   title: string
   buyer: string | null
   estimated_value: number | null

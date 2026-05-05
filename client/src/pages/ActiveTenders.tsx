@@ -109,11 +109,26 @@ function tenderToForm(t: Tender): Partial<TenderFormValues> {
  * ----------------------------------------------------------------- */
 
 function TenderCell({ row }: { row: Tender }) {
+  const titleSpan = (
+    <span className="dt-cell-primary">
+      <TruncatedText>{row.title}</TruncatedText>
+    </span>
+  );
   return (
     <div className="dt-cell-2line">
-      <span className="dt-cell-primary">
-        <TruncatedText>{row.title}</TruncatedText>
-      </span>
+      {row.tender_url ? (
+        <a
+          href={row.tender_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="dt-link"
+        >
+          {titleSpan}
+        </a>
+      ) : (
+        titleSpan
+      )}
       {row.reference_number && (
         <span className="dt-cell-secondary">{row.reference_number}</span>
       )}
@@ -666,14 +681,29 @@ export default function ActiveTenders() {
       header: 'Client',
       width: 160,
       maxWidth: 160,
-      render: row =>
-        row.client_name ? (
-          <TruncatedText>{row.client_name}</TruncatedText>
+      render: row => {
+        if (!row.client_name) {
+          return (
+            <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+              No client
+            </span>
+          );
+        }
+        const nameInner = <TruncatedText>{row.client_name}</TruncatedText>;
+        return row.client_website ? (
+          <a
+            href={row.client_website}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="dt-link"
+          >
+            {nameInner}
+          </a>
         ) : (
-          <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-            No client
-          </span>
-        ),
+          nameInner
+        );
+      },
     },
     {
       key: 'value',
