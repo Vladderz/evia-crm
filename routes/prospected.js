@@ -102,9 +102,6 @@ router.post('/extract', async (req, res) => {
 // GET /api/prospected
 router.get('/', async (req, res) => {
   try {
-    // Auto-delete expired contracts
-    await pool.query(`DELETE FROM prospected_contracts WHERE submission_deadline < CURRENT_DATE`);
-
     const { search } = req.query;
     let query;
     let params = [];

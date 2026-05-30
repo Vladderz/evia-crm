@@ -6,6 +6,7 @@ import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { useToast } from '../components/ToastProvider'
+import { useAuth } from '../context/AuthContext'
 
 function formatDate(iso: string): string {
   const dateStr = iso.slice(0, 10)
@@ -60,6 +61,7 @@ const EMPTY_FORM: FormState = {
 
 export default function ContractsProspected() {
   const toast = useToast()
+  const { user } = useAuth()
 
   const [contracts, setContracts] = useState<ProspectedContract[]>([])
   const [stats, setStats] = useState<ProspectedStats>({ today: 0, this_week: 0, vlad_today: 0, vlad_week: 0, tristan_today: 0, tristan_week: 0 })
@@ -185,18 +187,33 @@ export default function ContractsProspected() {
 
     setSaving(true)
     try {
-      await api.post('/prospected', {
+      const res = await api.post<ProspectedContract>('/prospected', {
         title: form.title.trim(),
         url: form.url.trim() || null,
         submission_deadline: form.submission_deadline,
         source: form.source,
         ocds_id: form.ocds_id,
       })
+      const created: ProspectedContract = {
+        ...res.data,
+        added_by_name: user?.name ?? '',
+      }
+      setContracts(prev => [created, ...prev])
+      setStats(prev => {
+        const next = { ...prev, today: prev.today + 1, this_week: prev.this_week + 1 }
+        if (user?.email === 'vlad@eviamarketing.co.uk') {
+          next.vlad_today = prev.vlad_today + 1
+          next.vlad_week = prev.vlad_week + 1
+        } else if (user?.email === 'tristan@eviamarketing.co.uk') {
+          next.tristan_today = prev.tristan_today + 1
+          next.tristan_week = prev.tristan_week + 1
+        }
+        return next
+      })
       toast.success('Contract added')
       setUrlInput('')
       setDuplicateError(null)
       setPanelOpen(false)
-      fetchData()
     } catch (err: unknown) {
       const response = (err as { response?: { status?: number; data?: { error?: string; existing?: { added_by_name?: string; created_at?: string; stage?: string } } } })?.response
       const status = response?.status

@@ -73,6 +73,19 @@ if (isProd) {
   });
 }
 
+async function cleanupExpiredProspected() {
+  try {
+    const result = await pool.query(
+      `DELETE FROM prospected_contracts WHERE submission_deadline < CURRENT_DATE`
+    );
+    if (result.rowCount > 0) {
+      console.log(`[prospected] Cleaned up ${result.rowCount} expired contract(s).`);
+    }
+  } catch (err) {
+    console.error('[prospected] Startup cleanup failed:', err.message);
+  }
+}
+
 async function checkTenderResultsTable() {
   try {
     const { rows } = await pool.query(
@@ -110,4 +123,5 @@ async function checkTenderResultsTable() {
 app.listen(PORT, () => {
   console.log(`Evia CRM server running on port ${PORT}`);
   checkTenderResultsTable();
+  cleanupExpiredProspected();
 });
