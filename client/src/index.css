@@ -1573,6 +1573,15 @@ body {
   color: #8A2BE2;
 }
 
+.extract-loading-banner {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: rgba(138, 43, 226, 0.08);
+  border-radius: 6px;
+}
+
 .url-extract-success {
   color: #10B981;
 }

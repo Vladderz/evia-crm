@@ -154,35 +154,40 @@ export default function ContractsProspected() {
       return
     }
 
-    // FTS URL - try to extract
+    // FTS URL - open the panel immediately so the user sees feedback,
+    // then run the extract in the background. When it resolves we patch
+    // in the title/deadline if the user hasn't already typed something
+    // there. The url field is the identity check - if the panel was
+    // closed and reopened with a different URL before extract resolved,
+    // we drop the stale result.
+    openPanel({ url: trimmed, source: 'fts' }, 'Add Contract (FTS)')
     setExtracting(true)
     try {
       const res = await api.post('/prospected/extract', { url: trimmed })
       if (res.data.success && res.data.data?.title) {
-        const { title, submission_deadline, ocds_id, source, notice_tag } = res.data.data
-        const hint = !submission_deadline
-          ? (notice_tag === 'planning'
+        const { title, submission_deadline, ocds_id, notice_tag } = res.data.data
+        setForm(prev => {
+          if (prev.url !== trimmed) return prev
+          return {
+            ...prev,
+            title: prev.title || title,
+            submission_deadline: prev.submission_deadline || (submission_deadline ?? ''),
+            ocds_id: prev.ocds_id || ocds_id,
+            source: 'fts',
+          }
+        })
+        if (!submission_deadline) {
+          setDeadlineHint(
+            notice_tag === 'planning'
               ? 'Pipeline notice — no deadline published. Enter manually if known.'
-              : 'No deadline published for this notice. Enter manually if known.')
-          : null
-        openPanel(
-          {
-            url: trimmed,
-            title,
-            submission_deadline: submission_deadline ?? '',
-            ocds_id,
-            source,
-          },
-          'Add Contract (FTS)',
-          hint,
-        )
+              : 'No deadline published for this notice. Enter manually if known.'
+          )
+        }
       } else {
-        toast.error(res.data.message)
-        openPanel({ url: trimmed }, 'Add Contract')
+        toast.error(res.data.message || 'Could not extract details from this URL. Please enter the details manually.')
       }
     } catch {
       toast.error('Could not extract details from this URL. Please enter the details manually.')
-      openPanel({ url: trimmed }, 'Add Contract')
     } finally {
       setExtracting(false)
     }
@@ -438,6 +443,12 @@ export default function ContractsProspected() {
       {/* Add panel */}
       <SlidePanel open={panelOpen} onClose={() => { if (!saving) setPanelOpen(false) }} title={panelTitle}>
         <form onSubmit={handleSave} noValidate>
+
+          {extracting && (
+            <div className="extract-loading-banner url-extract-loading" role="status">
+              Extracting from Find a Tender…
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="pc-title">Contract Name <span className="required">*</span></label>

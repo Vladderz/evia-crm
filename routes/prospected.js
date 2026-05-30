@@ -60,7 +60,14 @@ router.post('/extract', async (req, res) => {
     }
     const noticeId = match[1];
     const apiUrl = `https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages/${noticeId}`;
-    const response = await fetch(apiUrl);
+    const fetchLabel = `[prospected/extract] FTS fetch ${noticeId}`;
+    console.time(fetchLabel);
+    let response;
+    try {
+      response = await fetch(apiUrl);
+    } finally {
+      console.timeEnd(fetchLabel);
+    }
     if (!response.ok) {
       return res.json({ success: false, message: 'Could not extract details from this URL. Please enter the details manually.' });
     }
