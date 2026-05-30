@@ -66,33 +66,63 @@ router.post('/extract', async (req, res) => {
     }
     const data = await response.json();
     const release = data.releases && data.releases[0];
-    if (!release || !release.tender || !release.tender.title || !release.tender.tenderPeriod || !release.tender.tenderPeriod.endDate) {
+    if (!release || !release.tender) {
+      console.warn('[prospected/extract] No release/tender for notice', { noticeId });
       return res.json({ success: false, message: 'Could not extract details from this URL. Please enter the details manually.' });
     }
-    const title = release.tender.title;
-    const submission_deadline = release.tender.tenderPeriod.endDate.slice(0, 10);
+
+    const tender = release.tender;
+    const notice_tag = Array.isArray(release.tag) && release.tag.length > 0 ? release.tag[0] : null;
+    const title = tender.title || null;
+
+    if (!title) {
+      console.warn('[prospected/extract] No title for notice', { noticeId, notice_tag });
+      return res.json({ success: false, message: 'Could not extract details from this URL. Please enter the details manually.' });
+    }
+
+    // Deadline fallback chain. UK4 Contract Notices ("tender" tag) carry a
+    // real tenderPeriod.endDate. UK1 Pipeline notices don't - the closest
+    // proxy is the date the buyer expects to publish the actual tender
+    // notice (communication.futureNoticeDate), and as a last resort the
+    // contract start date from lots[0].
+    let submission_deadline = null;
+    if (tender.tenderPeriod && tender.tenderPeriod.endDate) {
+      submission_deadline = tender.tenderPeriod.endDate.slice(0, 10);
+    } else if (tender.communication && tender.communication.futureNoticeDate) {
+      submission_deadline = tender.communication.futureNoticeDate.slice(0, 10);
+    } else if (tender.lots && tender.lots[0] && tender.lots[0].contractPeriod && tender.lots[0].contractPeriod.startDate) {
+      submission_deadline = tender.lots[0].contractPeriod.startDate.slice(0, 10);
+    }
+
+    if (!submission_deadline) {
+      console.warn('[prospected/extract] No deadline derivable for notice', { noticeId, notice_tag });
+    }
+
     const ocds_id = release.id || null;
     let value = null;
-    if (release.tender.value && typeof release.tender.value.amount === 'number') {
-      value = release.tender.value.amount;
-    } else if (release.tender.minValue && typeof release.tender.minValue.amount === 'number') {
-      value = release.tender.minValue.amount;
+    if (tender.value && typeof tender.value.amount === 'number') {
+      value = tender.value.amount;
+    } else if (tender.minValue && typeof tender.minValue.amount === 'number') {
+      value = tender.minValue.amount;
     }
     const buyer =
       (release.buyer && release.buyer.name) ||
-      (release.tender.procuringEntity && release.tender.procuringEntity.name) ||
+      (tender.procuringEntity && tender.procuringEntity.name) ||
       null;
     const sector =
-      (release.tender.items &&
-        release.tender.items[0] &&
-        release.tender.items[0].classification &&
-        release.tender.items[0].classification.description) ||
+      (tender.items &&
+        tender.items[0] &&
+        tender.items[0].classification &&
+        tender.items[0].classification.description) ||
       null;
     const award_date =
-      (release.tender.awardPeriod && release.tender.awardPeriod.endDate)
-        ? release.tender.awardPeriod.endDate.slice(0, 10)
+      (tender.awardPeriod && tender.awardPeriod.endDate)
+        ? tender.awardPeriod.endDate.slice(0, 10)
         : null;
-    return res.json({ success: true, data: { title, submission_deadline, ocds_id, source: 'fts', value, buyer, sector, award_date } });
+    return res.json({
+      success: true,
+      data: { title, submission_deadline, ocds_id, source: 'fts', notice_tag, value, buyer, sector, award_date },
+    });
   } catch (err) {
     console.error('Extract error:', err);
     return res.json({ success: false, message: 'Could not extract details from this URL. Please enter the details manually.' });

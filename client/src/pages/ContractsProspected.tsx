@@ -77,6 +77,7 @@ export default function ContractsProspected() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM })
   const [titleError, setTitleError] = useState(false)
   const [deadlineError, setDeadlineError] = useState(false)
+  const [deadlineHint, setDeadlineHint] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const [search, setSearch] = useState('')
@@ -128,11 +129,12 @@ export default function ContractsProspected() {
     ? contracts.filter(c => c.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
     : contracts
 
-  function openPanel(prefill: Partial<FormState>, title: string) {
+  function openPanel(prefill: Partial<FormState>, title: string, hint: string | null = null) {
     setForm({ ...EMPTY_FORM, ...prefill })
     setPanelTitle(title)
     setTitleError(false)
     setDeadlineError(false)
+    setDeadlineHint(hint)
     setPanelOpen(true)
   }
 
@@ -156,9 +158,24 @@ export default function ContractsProspected() {
     setExtracting(true)
     try {
       const res = await api.post('/prospected/extract', { url: trimmed })
-      if (res.data.success) {
-        const { title, submission_deadline, ocds_id, source } = res.data.data
-        openPanel({ url: trimmed, title, submission_deadline, ocds_id, source }, 'Add Contract (FTS)')
+      if (res.data.success && res.data.data?.title) {
+        const { title, submission_deadline, ocds_id, source, notice_tag } = res.data.data
+        const hint = !submission_deadline
+          ? (notice_tag === 'planning'
+              ? 'Pipeline notice — no deadline published. Enter manually if known.'
+              : 'No deadline published for this notice. Enter manually if known.')
+          : null
+        openPanel(
+          {
+            url: trimmed,
+            title,
+            submission_deadline: submission_deadline ?? '',
+            ocds_id,
+            source,
+          },
+          'Add Contract (FTS)',
+          hint,
+        )
       } else {
         toast.error(res.data.message)
         openPanel({ url: trimmed }, 'Add Contract')
@@ -175,7 +192,10 @@ export default function ContractsProspected() {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
     if (name === 'title') setTitleError(false)
-    if (name === 'submission_deadline') setDeadlineError(false)
+    if (name === 'submission_deadline') {
+      setDeadlineError(false)
+      setDeadlineHint(null)
+    }
   }
 
   async function handleSave(e: FormEvent) {
@@ -455,6 +475,7 @@ export default function ContractsProspected() {
               className={deadlineError ? 'input-error' : ''}
             />
             {deadlineError && <span className="field-error">Submission deadline is required</span>}
+            {!deadlineError && deadlineHint && <span className="field-hint">{deadlineHint}</span>}
           </div>
 
           <div className="panel-form-actions">
