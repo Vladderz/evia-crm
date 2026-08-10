@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pencil, RotateCcw, StickyNote, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  Clock,
+  FileText,
+  Pencil,
+  RotateCcw,
+  StickyNote,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import api from '../lib/api';
 import type { NoMansLandRow, Tender, PipelineProspect } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
+import { KPITile } from '../components/KPITile/KPITile';
 import { FilterBar } from '../components/FilterBar/FilterBar';
 import { Select } from '../components/Select/Select';
 import {
@@ -13,6 +23,7 @@ import {
   type Column,
 } from '../components/DataTable/DataTable';
 import { Badge } from '../components/Badge/Badge';
+import { Button } from '../components/Button/Button';
 import { ReEngageDialog, type ReEngageTarget } from '../components/ReEngageDialog/ReEngageDialog';
 import { TenderDrawer, type TenderFormValues, type TenderStatus, type TenderClientOption } from '../components/TenderDrawer/TenderDrawer';
 import { ProspectDrawer, type ProspectFormValues, type ProspectStatus } from '../components/ProspectDrawer/ProspectDrawer';
@@ -139,6 +150,32 @@ export default function NoMansLand() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  /* KPI figures are computed from whatever rows are currently loaded.
+   * /no-mans-land applies server-side filters (search / reason /
+   * source), so when a filter is on the tiles reflect the filtered
+   * subset - this matches the "here are the stats for what you are
+   * looking at" pattern. A dedicated /no-mans-land/stats endpoint
+   * would give full-population figures but is deliberately not added
+   * yet (Re-engaged in last 30d would need the same endpoint since
+   * that data lives in activity_log, and we skipped it here). */
+  const kpis = useMemo(() => {
+    const droppedTenders = rows.filter(r => r.source === 'tender').length;
+    const droppedProspects = rows.filter(r => r.source === 'prospect').length;
+    const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const droppedLast30d = rows.filter(r => {
+      const t = new Date(r.dropped_at).getTime();
+      return Number.isFinite(t) && t >= thirtyDaysAgoMs;
+    }).length;
+    const reasonCounts = rows.reduce<Record<string, number>>((acc, r) => {
+      if (r.drop_reason) acc[r.drop_reason] = (acc[r.drop_reason] ?? 0) + 1;
+      return acc;
+    }, {});
+    const topEntry = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0];
+    const topReasonLabel = topEntry ? getDropReasonLabel(topEntry[0]) : '-';
+    const topReasonCount = topEntry ? topEntry[1] : 0;
+    return { droppedTenders, droppedProspects, droppedLast30d, topReasonLabel, topReasonCount };
+  }, [rows]);
 
   const filtersActive = !!search || !!reasonFilter || !!sourceFilter;
 
@@ -358,39 +395,46 @@ export default function NoMansLand() {
     {
       key: 'actions',
       header: '',
-      width: 280,
+      width: 380,
       align: 'right',
       render: row => (
-        <span className="dt-actions" onClick={e => e.stopPropagation()}>
-          <button
-            type="button"
-            className="dt-action dt-action-primary"
+        <span
+          className="dt-actions"
+          onClick={e => e.stopPropagation()}
+          style={{ display: 'inline-flex', gap: 6 }}
+        >
+          <Button
+            variant="primary"
+            size="sm"
+            icon={RotateCcw}
             onClick={() => setReEngageTarget(row)}
           >
-            <RotateCcw size={12} aria-hidden /> Re-engage
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
+            Re-engage
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={StickyNote}
             onClick={() => setNotesTarget(row)}
           >
-            <StickyNote size={12} aria-hidden /> Notes
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
+            Notes
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Pencil}
             onClick={() => openEdit(row)}
           >
-            <Pencil size={12} aria-hidden /> Edit
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-drop"
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={Trash2}
             onClick={() => setDeleteTarget(row)}
-            aria-label="Delete"
           >
-            <Trash2 size={12} aria-hidden />
-          </button>
+            Delete
+          </Button>
         </span>
       ),
     },
@@ -403,6 +447,42 @@ export default function NoMansLand() {
         title="No Man's Land"
         description="Tenders and prospects on pause. Re-engage when a fresh opportunity fits."
       />
+
+      <div className="kpi-row">
+        <KPITile
+          label="Dropped Tenders"
+          value={loading ? 0 : kpis.droppedTenders}
+          icon={FileText}
+          tone="neutral"
+          loading={loading}
+        />
+        <KPITile
+          label="Dropped Prospects"
+          value={loading ? 0 : kpis.droppedProspects}
+          icon={Users}
+          tone="neutral"
+          loading={loading}
+        />
+        <KPITile
+          label="Dropped Last 30d"
+          value={loading ? 0 : kpis.droppedLast30d}
+          icon={Clock}
+          tone="warning"
+          loading={loading}
+        />
+        <KPITile
+          label="Most Common Reason"
+          value={loading ? '-' : kpis.topReasonLabel}
+          hint={
+            !loading && kpis.topReasonCount > 0
+              ? `${kpis.topReasonCount} ${kpis.topReasonCount === 1 ? 'row' : 'rows'}`
+              : undefined
+          }
+          icon={AlertCircle}
+          tone="neutral"
+          loading={loading}
+        />
+      </div>
 
       <FilterBar>
         <FilterBar.Search
