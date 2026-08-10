@@ -3,11 +3,12 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   ArrowLeft,
   ArrowRight,
-  Banknote,
   Check,
   Clock,
   FileText,
+  Layers,
   Pencil,
+  PenLine,
   Plus,
   Send,
   StickyNote,
@@ -45,6 +46,7 @@ import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
   TENDER_STATUS_OPTIONS,
+  formatCompactCurrency,
   formatCurrency,
   formatDate,
   formatRelativeDays,
@@ -79,6 +81,25 @@ const STAGE_TABS: { key: string; label: string }[] = [
     .filter(o => o.value !== 'archived')
     .map(o => ({ key: o.value, label: o.label })),
 ];
+
+/* -----------------------------------------------------------------
+ * Cycling pipeline tile
+ * ----------------------------------------------------------------- */
+
+type PipelineTileState = 'total' | 'active' | 'submitted';
+
+const PIPELINE_TILE_KEY = 'evia.activeTenders.pipelineTile';
+
+const PIPELINE_STATE_ORDER: PipelineTileState[] = ['total', 'active', 'submitted'];
+
+const PIPELINE_TILE_META: Record<
+  PipelineTileState,
+  { label: string; icon: typeof Layers }
+> = {
+  total:     { label: 'Total Pipeline',           icon: Layers },
+  active:    { label: 'Info Gathering + Writing', icon: PenLine },
+  submitted: { label: 'Submitted',                icon: Send },
+};
 
 /* -----------------------------------------------------------------
  * Map server Tender shape to TenderDrawer's form values
@@ -519,7 +540,6 @@ export default function ActiveTenders() {
     const decided = won.length + lost.length;
     return {
       active: counts.all ?? 0,
-      submitted: counts.submitted ?? 0,
       wonValue: won.reduce((s, t) => s + Number(t.estimated_value ?? 0), 0),
       wonFees: won.reduce((s, t) => s + Number(t.evia_fee ?? 0), 0),
       wonCount: won.length,
@@ -527,6 +547,45 @@ export default function ActiveTenders() {
       winRate: decided > 0 ? Math.round((won.length / decided) * 100) : 0,
     };
   }, [tenders, counts]);
+
+  /* Cycling pipeline tile: three views on the same funnel, driven by
+   * clicks on the tile itself. State persists so page reloads keep the
+   * user on whichever view they left it. /tenders already excludes
+   * dropped + archived rows, so we don't re-filter for those. */
+  const pipelineValues = useMemo(() => {
+    const sumFor = (statuses: TenderStatus[]) => {
+      const rows = tenders.filter(t => statuses.includes(t.status as TenderStatus));
+      return {
+        value: rows.reduce((s, t) => s + Number(t.estimated_value ?? 0), 0),
+        fees:  rows.reduce((s, t) => s + Number(t.evia_fee ?? 0), 0),
+      };
+    };
+    return {
+      total:     sumFor(['questionnaire_sent', 'writing', 'submitted']),
+      active:    sumFor(['questionnaire_sent', 'writing']),
+      submitted: sumFor(['submitted']),
+    };
+  }, [tenders]);
+
+  const [pipelineState, setPipelineState] = useState<PipelineTileState>(() => {
+    if (typeof window === 'undefined') return 'total';
+    const stored = window.localStorage.getItem(PIPELINE_TILE_KEY);
+    return PIPELINE_STATE_ORDER.includes(stored as PipelineTileState)
+      ? (stored as PipelineTileState)
+      : 'total';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(PIPELINE_TILE_KEY, pipelineState);
+  }, [pipelineState]);
+
+  const nextPipelineState =
+    PIPELINE_STATE_ORDER[
+      (PIPELINE_STATE_ORDER.indexOf(pipelineState) + 1) % PIPELINE_STATE_ORDER.length
+    ];
+  const cyclePipelineState = () => setPipelineState(nextPipelineState);
+  const pipelineMeta = PIPELINE_TILE_META[pipelineState];
+  const pipelineFigures = pipelineValues[pipelineState];
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -836,24 +895,35 @@ export default function ActiveTenders() {
           loading={loading}
         />
         <KPITile
-          label="Submitted"
-          value={loading ? 0 : stats.submitted}
-          icon={Send}
+          label={pipelineMeta.label}
+          value={formatCompactCurrency(pipelineFigures.value)}
+          hint={`${formatCompactCurrency(pipelineFigures.fees)} in fees`}
+          icon={pipelineMeta.icon}
           tone="info"
-          loading={loading}
-        />
-        <KPITile
-          label="Won Value"
-          value={formatCurrency(stats.wonValue)}
-          icon={Trophy}
-          tone="success"
           mono
           loading={loading}
+          onClick={cyclePipelineState}
+          ariaLabel={
+            `${pipelineMeta.label}: ${formatCompactCurrency(pipelineFigures.value)}, `
+            + `${formatCompactCurrency(pipelineFigures.fees)} in fees. `
+            + `Click to cycle to ${PIPELINE_TILE_META[nextPipelineState].label}.`
+          }
+          footer={
+            <div className="kpi-tile-dots" aria-hidden>
+              {PIPELINE_STATE_ORDER.map(s => (
+                <span
+                  key={s}
+                  className={`kpi-tile-dot${s === pipelineState ? ' kpi-tile-dot-active' : ''}`}
+                />
+              ))}
+            </div>
+          }
         />
         <KPITile
-          label="Won Fees"
-          value={formatCurrency(stats.wonFees)}
-          icon={Banknote}
+          label="Won"
+          value={formatCompactCurrency(stats.wonValue)}
+          hint={`${formatCompactCurrency(stats.wonFees)} in fees`}
+          icon={Trophy}
           tone="success"
           mono
           loading={loading}

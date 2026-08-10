@@ -3432,6 +3432,23 @@ tr.row-agreed td:first-child {
   color: var(--text-tertiary);
   margin-top: 4px;
 }
+.kpi-tile-footer {
+  margin-top: 10px;
+}
+.kpi-tile-dots {
+  display: flex;
+  gap: 5px;
+}
+.kpi-tile-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #969DA7;
+  transition: background var(--transition-base);
+}
+.kpi-tile-dot-active {
+  background: #8176B2;
+}
 .kpi-tile-skeleton {
   display: inline-block;
   width: 80px;

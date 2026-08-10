@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 export type KPITileTone =
@@ -18,6 +19,10 @@ interface KPITileProps {
   mono?: boolean;
   loading?: boolean;
   onClick?: () => void;
+  /** Overrides the default label-derived accessible name (e.g. for a cycling tile). */
+  ariaLabel?: string;
+  /** Rendered at the base of the content column - used for cycle indicators etc. */
+  footer?: ReactNode;
 }
 
 export function KPITile({
@@ -29,6 +34,8 @@ export function KPITile({
   mono = false,
   loading = false,
   onClick,
+  ariaLabel,
+  footer,
 }: KPITileProps) {
   const clickable = !!onClick;
   const Tag: 'button' | 'div' = clickable ? 'button' : 'div';
@@ -38,6 +45,7 @@ export function KPITile({
       className={`kpi-tile${clickable ? ' kpi-tile-clickable' : ''}`}
       onClick={onClick}
       type={clickable ? 'button' : undefined}
+      aria-label={ariaLabel}
       style={clickable ? { textAlign: 'left', font: 'inherit', border: '1px solid var(--border-subtle)' } : undefined}
     >
       <span className={`kpi-tile-icon kpi-tile-icon-${tone}`}>
@@ -53,6 +61,7 @@ export function KPITile({
           </div>
         )}
         {hint && !loading && <div className="kpi-tile-hint">{hint}</div>}
+        {footer && <div className="kpi-tile-footer">{footer}</div>}
       </div>
     </Tag>
   );

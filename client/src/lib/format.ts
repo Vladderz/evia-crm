@@ -56,6 +56,24 @@ export function formatCurrency(value: number | null | undefined): string {
   }).format(value);
 }
 
+/**
+ * Compact currency for cramped KPI tiles: values at or above 1,000,000
+ * render as "£15.2M" (1 dp, trailing .0 trimmed). Below 1M we defer to
+ * the normal formatCurrency, so tiles stay legible at both scales.
+ * Only intended for tiles where the value can plausibly exceed 7 digits;
+ * use formatCurrency everywhere else so table rows and detail views
+ * stay consistent.
+ */
+export function formatCompactCurrency(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '';
+  if (Math.abs(value) >= 1_000_000) {
+    const millions = value / 1_000_000;
+    const formatted = millions.toFixed(1).replace(/\.0$/, '');
+    return `£${formatted}M`;
+  }
+  return formatCurrency(value);
+}
+
 export type RelativeDaysTone = 'overdue' | 'urgent' | null;
 
 export interface RelativeDays {
