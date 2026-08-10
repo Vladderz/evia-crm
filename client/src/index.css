@@ -3141,7 +3141,7 @@ tr.row-agreed td:first-child {
 }
 .sidebar-brand-logo {
   /* Fixed height + width: auto triggers aspect-ratio scaling on
-     <img>. Source is 1254x1254 (square), rendered 44x44px. */
+     <img>. Source is 465x152 (wordmark), rendered ~135x44px. */
   display: block;
   height: 44px;
   width: auto;
