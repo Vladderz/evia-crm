@@ -1,3 +1,9 @@
+// Results Tracker UI was removed from the client on 2026-08-10. These
+// CRUD routes are retained as dead code (no consumer) so the tender_results
+// table + its 2 historical rows stay accessible if the page is ever
+// resurrected. The table is not a write path for the Won/Lost tender flow
+// (routes/tenders.js does not touch it) and has no FK to tenders or
+// clients, so it can sit inert without risk.
 const express = require('express');
 const pool = require('../db/pool');
 
