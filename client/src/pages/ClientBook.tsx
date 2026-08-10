@@ -1,448 +1,589 @@
-import { Fragment, useState, useEffect, useCallback, type FormEvent, type ChangeEvent } from 'react'
-import api from '../lib/api'
-import type { Client } from '../lib/types'
-import StatsBar from '../components/StatsBar'
-import SlidePanel from '../components/SlidePanel'
-import NotesPanel from '../components/NotesPanel'
-import ConfirmDialog from '../components/ConfirmDialog'
-import LoadingSpinner from '../components/LoadingSpinner'
-import { useToast } from '../components/ToastProvider'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import {
+  Building2,
+  CheckCircle2,
+  MessageCircle,
+  Pencil,
+  Plus,
+  StickyNote,
+  Target,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import api from '../lib/api';
+import type { Client } from '../lib/types';
+import { useToast } from '../components/ToastProvider';
+import { PageHeader } from '../components/PageHeader/PageHeader';
+import { KPITile } from '../components/KPITile/KPITile';
+import { StageTabs } from '../components/StageTabs/StageTabs';
+import { FilterBar } from '../components/FilterBar/FilterBar';
+import {
+  DataTable,
+  TruncatedText,
+  type Column,
+} from '../components/DataTable/DataTable';
+import { Badge, type BadgeVariant } from '../components/Badge/Badge';
+import { Button } from '../components/Button/Button';
+import { Select } from '../components/Select/Select';
+import {
+  ClientDrawer,
+  type ClientFormValues,
+} from '../components/ClientDrawer/ClientDrawer';
+import NotesPanel from '../components/NotesPanel';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { formatDate } from '../lib/format';
+
+/* -----------------------------------------------------------------
+ * Constants
+ * ----------------------------------------------------------------- */
 
 interface Stats {
-  total: number
-  active_client: number
-  seeking_tender: number
-  prospect: number
+  total: number;
+  active_client: number;
+  seeking_tender: number;
+  prospect: number;
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const EMPTY_STATS: Stats = {
+  total: 0,
+  active_client: 0,
+  seeking_tender: 0,
+  prospect: 0,
+};
+
+const STATUS_LABEL: Record<string, string> = {
   active_client: 'Active Client',
-  prospect: 'Prospect',
   seeking_tender: 'Seeking Tender',
+  prospect: 'Prospect',
+};
+
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  active_client: 'success',
+  seeking_tender: 'info',
+  prospect: 'neutral',
+};
+
+const STAGE_TABS: { key: string; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'active_client', label: 'Active Client' },
+  { key: 'seeking_tender', label: 'Seeking Tender' },
+  { key: 'prospect', label: 'Prospect' },
+];
+
+type SortKey = 'recent' | 'alpha' | 'oldest';
+
+const SORT_OPTIONS = [
+  { value: 'recent', label: 'Most Recent' },
+  { value: 'alpha',  label: 'Alphabetical' },
+  { value: 'oldest', label: 'Oldest First' },
+];
+
+const MANAGER_LABEL: Record<string, string> = {
+  vlad: 'Vlad',
+  tristan: 'Tristan',
+  both: 'Both',
+};
+
+/* -----------------------------------------------------------------
+ * Cell renderers
+ * ----------------------------------------------------------------- */
+
+function CompanyCell({ row }: { row: Client }) {
+  const href = row.website
+    ? (row.website.startsWith('http') ? row.website : `https://${row.website}`)
+    : null;
+  const inner = (
+    <span className="dt-cell-primary">
+      <TruncatedText>{row.company_name}</TruncatedText>
+    </span>
+  );
+  return href ? (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={e => e.stopPropagation()}
+      className="dt-link"
+    >
+      {inner}
+    </a>
+  ) : (
+    inner
+  );
 }
 
-const EMPTY_FORM = {
-  company_name: '',
-  contact_name: '',
-  email: '',
-  phone: '',
-  website: '',
-  sector: '',
-  region: '',
-  status: 'prospect',
-  notes: '',
-  account_manager: 'vlad',
+function EmailCell({ row }: { row: Client }) {
+  if (!row.email) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  return (
+    <a
+      href={`mailto:${row.email}`}
+      onClick={e => e.stopPropagation()}
+      className="dt-link"
+    >
+      <TruncatedText>{row.email}</TruncatedText>
+    </a>
+  );
 }
 
-type SortKey = 'recent' | 'alpha' | 'oldest'
+function PlainCell({ value }: { value: string | null }) {
+  if (!value) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+  return <TruncatedText>{value}</TruncatedText>;
+}
+
+function StatusCell({ row }: { row: Client }) {
+  const variant = STATUS_VARIANT[row.status] ?? 'neutral';
+  const label = STATUS_LABEL[row.status] ?? row.status;
+  return <Badge variant={variant} withDot>{label}</Badge>;
+}
+
+function ManagerCell({ row }: { row: Client }) {
+  const key = row.account_manager ?? 'vlad';
+  return <>{MANAGER_LABEL[key] ?? key}</>;
+}
+
+interface ActionsCellProps {
+  row: Client;
+  onNotes: (c: Client) => void;
+  onEdit: (c: Client) => void;
+  onDelete: (c: Client) => void;
+}
+
+function ActionsCell({ row, onNotes, onEdit, onDelete }: ActionsCellProps) {
+  return (
+    <span className="dt-actions" onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        className="dt-action dt-action-ghost"
+        onClick={() => onNotes(row)}
+      >
+        <StickyNote size={12} aria-hidden /> Notes
+      </button>
+      <button
+        type="button"
+        className="dt-action dt-action-ghost"
+        onClick={() => onEdit(row)}
+      >
+        <Pencil size={12} aria-hidden /> Edit
+      </button>
+      <button
+        type="button"
+        className="dt-action dt-action-drop"
+        onClick={() => onDelete(row)}
+        aria-label="Delete"
+      >
+        <Trash2 size={12} aria-hidden /> Delete
+      </button>
+    </span>
+  );
+}
+
+/* -----------------------------------------------------------------
+ * Expand panel: latest note (or a placeholder)
+ * ----------------------------------------------------------------- */
+
+function ExpandPanel({ row, onNotes }: { row: Client; onNotes: (c: Client) => void }) {
+  return (
+    <div className="dt-expand-grid">
+      <div>
+        <div className="dt-expand-section-title">Latest note</div>
+        {row.latest_note_text ? (
+          <div className="dt-expand-note" style={{ borderBottom: 'none' }}>
+            <div className="dt-expand-note-meta">
+              {row.latest_note_date && formatDate(row.latest_note_date)}
+            </div>
+            {row.latest_note_text}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            No notes yet.
+          </p>
+        )}
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="dt-action dt-action-link"
+            onClick={() => onNotes(row)}
+          >
+            View all notes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -----------------------------------------------------------------
+ * Map server client to drawer form values
+ * ----------------------------------------------------------------- */
+
+function clientToForm(c: Client): Partial<ClientFormValues> {
+  return {
+    company_name: c.company_name,
+    contact_name: c.contact_name ?? '',
+    email: c.email ?? '',
+    phone: c.phone ?? '',
+    website: c.website ?? '',
+    sector: c.sector ?? '',
+    region: c.region ?? '',
+    status: c.status,
+    account_manager: (c.account_manager ?? 'vlad') as ClientFormValues['account_manager'],
+    notes: c.notes ?? '',
+  };
+}
+
+/* -----------------------------------------------------------------
+ * Page
+ * ----------------------------------------------------------------- */
 
 export default function ClientBook() {
-  const toast = useToast()
+  const toast = useToast();
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [stats, setStats] = useState<Stats>({ total: 0, active_client: 0, seeking_tender: 0, prospect: 0 })
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
+  const [clients, setClients] = useState<Client[]>([]);
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [managerFilter, setManagerFilter] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('recent')
+  const [stage, setStage] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [managerFilter, setManagerFilter] = useState<string | undefined>(undefined);
+  const [sortKey, setSortKey] = useState<SortKey>('recent');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [editingClient, setEditingClient] = useState<Client | null>(null)
-  const [form, setForm] = useState({ ...EMPTY_FORM })
-  const [formError, setFormError] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [drawerInitial, setDrawerInitial] = useState<
+    Partial<ClientFormValues> | null | undefined
+  >(undefined);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const drawerOpen = drawerInitial !== undefined;
 
-  const [notesPanelClient, setNotesPanelClient] = useState<{ id: number; name: string } | null>(null)
+  const [notesClient, setNotesClient] = useState<Client | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
 
-  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
-
-  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchData = useCallback(async () => {
-    setLoadError(false)
+    setLoadError(false);
     try {
       const [clientsRes, statsRes] = await Promise.all([
         api.get('/clients'),
         api.get('/clients/stats'),
-      ])
-      setClients(clientsRes.data)
-      setStats(statsRes.data)
+      ]);
+      setClients(clientsRes.data);
+      setStats(statsRes.data ?? EMPTY_STATS);
     } catch {
-      setLoadError(true)
+      setLoadError(true);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  // Filtered + sorted clients
-  const visible = clients
-    .filter(c => {
-      if (statusFilter && c.status !== statusFilter) return false
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {
+      all: clients.length,
+      active_client: 0,
+      seeking_tender: 0,
+      prospect: 0,
+    };
+    for (const client of clients) {
+      c[client.status] = (c[client.status] ?? 0) + 1;
+    }
+    return c;
+  }, [clients]);
+
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    const filteredList = clients.filter(c => {
+      if (stage !== 'all' && c.status !== stage) return false;
       if (managerFilter) {
-        const m = c.account_manager ?? 'vlad'
-        if (managerFilter === 'both' && m !== 'both') return false
-        if (managerFilter === 'vlad' && m !== 'vlad' && m !== 'both') return false
-        if (managerFilter === 'tristan' && m !== 'tristan' && m !== 'both') return false
+        const m = c.account_manager ?? 'vlad';
+        if (managerFilter === 'both' && m !== 'both') return false;
+        if (managerFilter === 'vlad' && m !== 'vlad' && m !== 'both') return false;
+        if (managerFilter === 'tristan' && m !== 'tristan' && m !== 'both') return false;
       }
-      if (debouncedSearch) {
-        const q = debouncedSearch.toLowerCase()
-        return (
-          c.company_name.toLowerCase().includes(q) ||
-          (c.contact_name ?? '').toLowerCase().includes(q) ||
-          (c.sector ?? '').toLowerCase().includes(q) ||
-          (c.region ?? '').toLowerCase().includes(q)
-        )
+      if (q) {
+        const hay = `${c.company_name} ${c.contact_name ?? ''} ${c.sector ?? ''} ${c.region ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-      return true
-    })
-    .sort((a, b) => {
-      if (sortKey === 'alpha') return a.company_name.localeCompare(b.company_name)
-      if (sortKey === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    })
+      return true;
+    });
+    return filteredList.sort((a, b) => {
+      if (sortKey === 'alpha') return a.company_name.localeCompare(b.company_name);
+      if (sortKey === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+  }, [clients, stage, debouncedSearch, managerFilter, sortKey]);
+
+  const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
+
+  const filtersActive = !!search || !!managerFilter || sortKey !== 'recent';
+
+  /* ------------- Handlers ------------- */
+
+  function clearFilters() {
+    setSearch('');
+    setManagerFilter(undefined);
+    setSortKey('recent');
+  }
+
+  function toggleExpand(row: Client) {
+    const id = String(row.id);
+    setExpandedId(curr => (curr === id ? null : id));
+  }
 
   function openAdd() {
-    setNotesPanelClient(null)
-    setEditingClient(null)
-    setForm({ ...EMPTY_FORM })
-    setFormError('')
-    setPanelOpen(true)
+    setEditingId(null);
+    setDrawerInitial(null);
   }
 
-  function openEdit(client: Client) {
-    setNotesPanelClient(null)
-    setEditingClient(client)
-    setForm({
-      company_name: client.company_name,
-      contact_name: client.contact_name ?? '',
-      email: client.email ?? '',
-      phone: client.phone ?? '',
-      website: client.website ?? '',
-      sector: client.sector ?? '',
-      region: client.region ?? '',
-      status: client.status,
-      notes: client.notes ?? '',
-      account_manager: client.account_manager ?? 'vlad',
-    })
-    setFormError('')
-    setPanelOpen(true)
+  function openEdit(c: Client) {
+    setEditingId(c.id);
+    setDrawerInitial(clientToForm(c));
   }
 
-  function handlePanelClose() {
-    if (saving) return
-    setPanelOpen(false)
+  function closeDrawer() {
+    setDrawerInitial(undefined);
+    setEditingId(null);
   }
 
-  function handleField(e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
-  }
-
-  async function handleSave(e: FormEvent) {
-    e.preventDefault()
-    if (!form.company_name.trim()) {
-      setFormError('Company name is required')
-      return
-    }
-    setFormError('')
-    setSaving(true)
+  async function handleSave(values: ClientFormValues) {
     try {
-      if (editingClient) {
-        await api.put(`/clients/${editingClient.id}`, form)
-        toast.success('Client updated successfully')
+      if (editingId !== null) {
+        await api.put(`/clients/${editingId}`, values);
+        toast.success('Client updated successfully');
       } else {
-        await api.post('/clients', form)
-        toast.success('Client added successfully')
+        await api.post('/clients', values);
+        toast.success('Client added successfully');
       }
-      setPanelOpen(false)
-      await fetchData()
+      closeDrawer();
+      fetchData();
     } catch {
-      toast.error(editingClient ? 'Failed to update client. Please try again.' : 'Failed to add client. Please try again.')
-    } finally {
-      setSaving(false)
+      toast.error(
+        editingId !== null
+          ? 'Failed to update client. Please try again.'
+          : 'Failed to add client. Please try again.',
+      );
     }
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
+    const name = deleteTarget.company_name;
     try {
-      await api.delete(`/clients/${deleteTarget.id}`)
-      toast.success(`${deleteTarget.company_name} deleted`)
-      setDeleteTarget(null)
-      await fetchData()
+      await api.delete(`/clients/${deleteTarget.id}`);
+      toast.success(`${name} deleted`);
+      setDeleteTarget(null);
+      fetchData();
     } catch {
-      toast.error('Failed to delete client. Please try again.')
-      setDeleteTarget(null)
+      toast.error('Failed to delete client. Please try again.');
+      setDeleteTarget(null);
     }
   }
 
-  const statItems = [
-    { label: 'Total Clients', value: stats.total },
-    { label: 'Active Clients', value: stats.active_client },
-    { label: 'Prospects', value: stats.prospect },
-    { label: 'Seeking Tender', value: stats.seeking_tender },
-  ]
+  /* ------------- Render ------------- */
 
-  if (loading) {
-    return <LoadingSpinner message="Loading clients..." />
-  }
-
-  if (loadError) {
-    return (
-      <div className="page-error">
-        <p>Something went wrong loading clients. Please try again.</p>
-        <button className="btn btn-primary" onClick={fetchData}>Retry</button>
-      </div>
-    )
-  }
+  const columns: Column<Client>[] = [
+    {
+      key: 'company',
+      header: 'Company',
+      width: 'flex',
+      maxWidth: 220,
+      render: row => <CompanyCell row={row} />,
+    },
+    {
+      key: 'contact',
+      header: 'Contact',
+      width: 140,
+      maxWidth: 140,
+      render: row => <PlainCell value={row.contact_name} />,
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      width: 'flex',
+      maxWidth: 220,
+      render: row => <EmailCell row={row} />,
+    },
+    {
+      key: 'sector',
+      header: 'Sector',
+      width: 140,
+      maxWidth: 140,
+      render: row => <PlainCell value={row.sector} />,
+    },
+    {
+      key: 'region',
+      header: 'Region',
+      width: 120,
+      maxWidth: 120,
+      render: row => <PlainCell value={row.region} />,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 140,
+      render: row => <StatusCell row={row} />,
+    },
+    {
+      key: 'manager',
+      header: 'Manager',
+      width: 90,
+      render: row => <ManagerCell row={row} />,
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 240,
+      align: 'right',
+      render: row => (
+        <ActionsCell
+          row={row}
+          onNotes={c => setNotesClient(c)}
+          onEdit={openEdit}
+          onDelete={c => setDeleteTarget(c)}
+        />
+      ),
+    },
+  ];
 
   return (
-    <div className="page-clients">
-      <StatsBar stats={statItems} />
+    <Tooltip.Provider delayDuration={300} skipDelayDuration={100}>
+      <PageHeader
+        title="Client Book"
+        description="Companies we work with and the ones we are chasing. Keep the contact, sector and manager up to date."
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openAdd}>
+            Add Client
+          </Button>
+        }
+      />
 
-      <div className="toolbar">
-        <div className="toolbar-filters">
-          <input
-            type="search"
-            className="toolbar-search"
-            placeholder="Search clients..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <select
-            className="toolbar-select"
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-          >
-            <option value="">All Statuses</option>
-            <option value="active_client">Active Client</option>
-            <option value="prospect">Prospect</option>
-            <option value="seeking_tender">Seeking Tender</option>
-          </select>
-          <select
-            className="toolbar-select"
-            value={managerFilter}
-            onChange={e => setManagerFilter(e.target.value)}
-          >
-            <option value="">All Managers</option>
-            <option value="vlad">Vlad</option>
-            <option value="tristan">Tristan</option>
-            <option value="both">Both</option>
-          </select>
-          <select
-            className="toolbar-select"
-            value={sortKey}
-            onChange={e => setSortKey(e.target.value as SortKey)}
-          >
-            <option value="recent">Most Recent</option>
-            <option value="alpha">Alphabetical</option>
-            <option value="oldest">Oldest First</option>
-          </select>
-        </div>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
+      <div className="kpi-row">
+        <KPITile
+          label="Total Clients"
+          value={loading ? 0 : stats.total}
+          icon={Building2}
+          tone="brand"
+          loading={loading}
+        />
+        <KPITile
+          label="Active Clients"
+          value={loading ? 0 : stats.active_client}
+          icon={CheckCircle2}
+          tone="success"
+          loading={loading}
+        />
+        <KPITile
+          label="Prospects"
+          value={loading ? 0 : stats.prospect}
+          icon={Users}
+          tone="neutral"
+          loading={loading}
+        />
+        <KPITile
+          label="Seeking Tender"
+          value={loading ? 0 : stats.seeking_tender}
+          icon={Target}
+          tone="info"
+          loading={loading}
+        />
       </div>
 
-      {visible.length === 0 ? (
-        <div className="empty-state">
-          {clients.length === 0 ? (
-            <>
-              <p>No clients yet. Add your first client to get started.</p>
-              <button className="btn btn-primary" onClick={openAdd} style={{ marginTop: '16px' }}>+ Add Client</button>
-            </>
-          ) : (
-            <p>No clients match your search or filter.</p>
-          )}
-        </div>
-      ) : (
-        <div className="clients-table-wrapper">
-          <table className="clients-table">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Contact</th>
-                <th>Email</th>
-                <th>Sector</th>
-                <th>Region</th>
-                <th>Status</th>
-                <th>Manager</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map(client => {
-                const managerLabel = client.account_manager === 'tristan' ? 'Tristan'
-                  : client.account_manager === 'both' ? 'Both'
-                  : 'Vlad'
-                const websiteHref = client.website
-                  ? (client.website.startsWith('http') ? client.website : `https://${client.website}`)
-                  : null
-                return (
-                  <Fragment key={client.id}>
-                  <tr className={client.latest_note_text ? 'has-sub-note' : ''}>
-                    <td className="td-company-name">
-                      {websiteHref ? (
-                        <a href={websiteHref} target="_blank" rel="noopener noreferrer" className="client-link">
-                          {client.company_name}
-                        </a>
-                      ) : (
-                        client.company_name
-                      )}
-                    </td>
-                    <td>{client.contact_name || '-'}</td>
-                    <td className="td-email">
-                      {client.email ? (
-                        <a href={`mailto:${client.email}`} className="client-link">{client.email}</a>
-                      ) : '-'}
-                    </td>
-                    <td>{client.sector || '-'}</td>
-                    <td>{client.region || '-'}</td>
-                    <td>
-                      <span className={`status-badge status-${client.status}`}>
-                        {STATUS_LABELS[client.status] ?? client.status}
-                      </span>
-                    </td>
-                    <td>{managerLabel}</td>
-                    <td className="td-actions">
-                      <button
-                        className="btn-edit"
-                        onClick={() => { setPanelOpen(false); setNotesPanelClient({ id: client.id, name: client.company_name }) }}
-                      >
-                        Notes
-                      </button>
-                      <button className="btn-edit" onClick={() => openEdit(client)}>Edit</button>
-                      <button className="btn-delete" onClick={() => setDeleteTarget(client)}>Delete</button>
-                    </td>
-                  </tr>
-                  {client.latest_note_text && (
-                    <tr className="note-sub-row">
-                      <td colSpan={8}>
-                        <div className="note-sub-row-inner">
-                          <span className="note-sub-row-icon">N</span>
-                          <span className="note-sub-row-date">
-                            {new Date(client.latest_note_date!.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                          </span>
-                          <span className="note-sub-row-text">{client.latest_note_text}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <StageTabs tabs={tabsWithCount} activeKey={stage} onChange={setStage} />
 
-      <SlidePanel
-        open={panelOpen}
-        onClose={handlePanelClose}
-        title={editingClient ? `Edit ${editingClient.company_name}` : 'Add Client'}
-      >
-        <form onSubmit={handleSave} noValidate>
-          {formError && <div className="alert alert-error">{formError}</div>}
+      <FilterBar variant="attached">
+        <FilterBar.Search
+          value={search}
+          onChange={setSearch}
+          placeholder="Search clients..."
+        />
+        <Select
+          value={managerFilter ?? 'all'}
+          onValueChange={v => setManagerFilter(v === 'all' ? undefined : v)}
+          placeholder="All Managers"
+          width={160}
+          ariaLabel="Filter by manager"
+          options={[
+            { value: 'all', label: 'All Managers' },
+            { value: 'vlad', label: 'Vlad' },
+            { value: 'tristan', label: 'Tristan' },
+            { value: 'both', label: 'Both' },
+          ]}
+        />
+        <Select
+          value={sortKey}
+          onValueChange={v => setSortKey(v as SortKey)}
+          width={160}
+          ariaLabel="Sort by"
+          options={SORT_OPTIONS}
+        />
+        {filtersActive && <FilterBar.Clear onClick={clearFilters} />}
+      </FilterBar>
 
-          <div className="form-group">
-            <label htmlFor="company_name">Company Name <span className="required">*</span></label>
-            <input
-              id="company_name"
-              name="company_name"
-              type="text"
-              value={form.company_name}
-              onChange={handleField}
-              className={formError && !form.company_name.trim() ? 'input-error' : ''}
-            />
-          </div>
+      <DataTable<Client>
+        columns={columns}
+        data={filtered}
+        rowKey={r => String(r.id)}
+        variant="attached"
+        ariaLabel="Client book"
+        isLoading={loading}
+        isError={loadError}
+        errorMessage="Couldn't load clients"
+        onRetry={fetchData}
+        onRowClick={toggleExpand}
+        expandedRow={{
+          rowId: expandedId,
+          render: row => <ExpandPanel row={row} onNotes={c => setNotesClient(c)} />,
+        }}
+        emptyState={{
+          message:
+            clients.length === 0
+              ? 'No clients yet. Add your first client to get started.'
+              : 'No clients match these filters',
+          action:
+            clients.length === 0
+              ? { label: 'Add Client', onClick: openAdd }
+              : { label: 'Clear filters', onClick: clearFilters },
+        }}
+      />
 
-          <div className="form-group">
-            <label htmlFor="contact_name">Contact Name</label>
-            <input id="contact_name" name="contact_name" type="text" value={form.contact_name} onChange={handleField} />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" value={form.email} onChange={handleField} />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="phone">Phone</label>
-            <input id="phone" name="phone" type="text" value={form.phone} onChange={handleField} />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="website">Website</label>
-            <input id="website" name="website" type="text" value={form.website} onChange={handleField} placeholder="https://..." />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="sector">Sector</label>
-            <input id="sector" name="sector" type="text" value={form.sector} onChange={handleField} placeholder="e.g. Commercial Cleaning, Electrical" />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="region">Region</label>
-            <input id="region" name="region" type="text" value={form.region} onChange={handleField} placeholder="e.g. London, South East, Nationwide" />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="status">Status</label>
-            <select id="status" name="status" value={form.status} onChange={handleField}>
-              <option value="prospect">Prospect</option>
-              <option value="active_client">Active Client</option>
-              <option value="seeking_tender">Seeking Tender</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="account_manager">Account Manager</label>
-            <select id="account_manager" name="account_manager" value={form.account_manager} onChange={handleField}>
-              <option value="vlad">Vlad</option>
-              <option value="tristan">Tristan</option>
-              <option value="both">Both</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="notes">Notes</label>
-            <textarea id="notes" name="notes" rows={4} value={form.notes} onChange={handleField} />
-          </div>
-
-          <div className="panel-form-actions">
-            <button type="button" className="btn btn-secondary" onClick={handlePanelClose} disabled={saving}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Client'}
-            </button>
-          </div>
-        </form>
-      </SlidePanel>
+      <ClientDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        initial={drawerInitial ?? null}
+        onSave={handleSave}
+      />
 
       <NotesPanel
-        isOpen={notesPanelClient !== null}
-        onClose={() => { setNotesPanelClient(null); fetchData() }}
-        title={`${notesPanelClient?.name ?? ''} - Notes`}
+        isOpen={notesClient !== null}
+        onClose={() => {
+          setNotesClient(null);
+          fetchData();
+        }}
+        title={`${notesClient?.company_name ?? ''} - Notes`}
         entityType="client"
-        entityId={notesPanelClient?.id ?? null}
+        entityId={notesClient?.id ?? null}
       />
 
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete Client"
-        message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.company_name}? This cannot be undone.` : ''}
+        message={
+          deleteTarget
+            ? `Are you sure you want to delete ${deleteTarget.company_name}? This cannot be undone.`
+            : ''
+        }
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
-  )
+    </Tooltip.Provider>
+  );
 }
