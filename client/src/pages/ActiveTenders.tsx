@@ -921,8 +921,8 @@ export default function ActiveTenders() {
         />
         <KPITile
           label="Won"
-          value={formatCompactCurrency(stats.wonValue)}
-          hint={`${formatCompactCurrency(stats.wonFees)} in fees`}
+          value={formatCurrency(stats.wonValue)}
+          hint={`${formatCurrency(stats.wonFees)} in fees`}
           icon={Trophy}
           tone="success"
           mono

@@ -474,8 +474,10 @@ router.post('/:id/drop', async (req, res) => {
 
 // POST /api/pipeline/:id/re-engage
 // Pull a prospect out of No Man's Land back into Sales Pipeline.
-// Status is reset to 'contacted'. drop_reason / drop_note are kept on
-// the row as historical context. (To push the row into Active Tenders
+// Status is reset to 'call_booked' so the row lands on the primary
+// live stage with a working advance path (Move to Waiting Room /
+// Push to Active Tenders). drop_reason / drop_note are kept on the
+// row as historical context. (To push the row into Active Tenders
 // instead, call /promote - that flow handles client + tender creation
 // and deletes the pipeline row.)
 router.post('/:id/re-engage', async (req, res) => {
@@ -492,7 +494,7 @@ router.post('/:id/re-engage', async (req, res) => {
     const result = await pool.query(
       `UPDATE sales_pipeline SET
         dropped_at = NULL,
-        status = 'contacted',
+        status = 'call_booked',
         last_contact_date = CURRENT_DATE,
         next_followup_date = CURRENT_DATE + INTERVAL '3 days',
         updated_at = NOW()

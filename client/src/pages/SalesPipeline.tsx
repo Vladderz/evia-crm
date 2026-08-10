@@ -5,7 +5,6 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  MessageCircle,
   Pencil,
   Plus,
   Send,
@@ -681,13 +680,6 @@ export default function SalesPipeline() {
           value={loading ? 0 : stats.active_prospects}
           icon={Users}
           tone="brand"
-          loading={loading}
-        />
-        <KPITile
-          label="Contacted"
-          value={loading ? 0 : stats.contacted}
-          icon={MessageCircle}
-          tone="neutral"
           loading={loading}
         />
         <KPITile
