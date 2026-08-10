@@ -3329,6 +3329,7 @@ tr.row-agreed td:first-child {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
+  min-width: 0;
 }
 .page-header-text { min-width: 0; }
 .page-header-title {
@@ -3362,6 +3363,7 @@ tr.row-agreed td:first-child {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
+  min-width: 0;
 }
 
 .kpi-tile {
