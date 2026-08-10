@@ -487,59 +487,6 @@ body {
 }
 
 /* ================================================================
-   TOOLBAR (search, filter, sort, add button)
-   ================================================================ */
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.toolbar-filters {
-  display: flex;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.toolbar-search {
-  flex: 1;
-  min-width: 180px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-family: var(--font);
-  background: #ffffff;
-  color: var(--text-primary);
-}
-
-.toolbar-search:focus {
-  outline: none;
-  border-color: var(--purple-accent);
-}
-
-.toolbar-select {
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-family: var(--font);
-  background: #ffffff;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.toolbar-select:focus {
-  outline: none;
-  border-color: var(--purple-accent);
-}
-
-/* ================================================================
    CLIENT CARDS GRID
    ================================================================ */
 
@@ -1365,22 +1312,41 @@ body {
     width: 100vw;
   }
 
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .toolbar .btn {
-    align-self: flex-start;
-  }
 }
 
 /* ================================================================
    CONTRACTS PROSPECTED PAGE
    ================================================================ */
 
-.page-prospected {
-  max-width: 1400px;
+/* URL bar sits directly below the KPI tiles; the input flexes, the
+ * button holds its intrinsic width. */
+.prospected-url-bar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.prospected-url-bar > *:last-child { flex-shrink: 0; }
+
+/* Duplicate + extract banners use design-system tokens so they track
+ * the shared badge palette rather than carrying their own hex values. */
+.prospected-error-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: var(--badge-danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  color: var(--badge-danger-text);
+  font-size: 14px;
+}
+.prospected-extract-banner {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: var(--badge-info-bg);
+  color: var(--badge-info-text);
+  border-radius: var(--radius-md);
 }
 
 /* Stats bar - 6-column variant */
@@ -1459,142 +1425,12 @@ body {
   color: #8A2BE2;
 }
 
-.extract-loading-banner {
-  font-size: 13px;
-  font-weight: 500;
-  padding: 8px 12px;
-  margin-bottom: 16px;
-  background: rgba(138, 43, 226, 0.08);
-  border-radius: 6px;
-}
-
 .url-extract-success {
   color: #10B981;
 }
 
 .url-extract-error {
   color: #9CA3AF;
-}
-
-/* Prospected contracts table */
-.prospected-table-wrapper {
-  overflow-x: auto;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.prospected-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.prospected-table th {
-  text-align: left;
-  padding: 12px 16px;
-  font-weight: 600;
-  font-size: 12px;
-  color: #6B7280;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #E5E7EB;
-  background: #FAFAFA;
-  white-space: nowrap;
-}
-
-.prospected-table td {
-  padding: 10px 16px;
-  font-size: 14px;
-  border-bottom: 1px solid #F3F4F6;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.prospected-table .td-contract-name {
-  white-space: normal;
-  max-width: 350px;
-  word-break: break-word;
-}
-
-.prospected-table tbody tr:hover {
-  background: #F5F4FC;
-}
-
-.prospected-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.prospected-link {
-  color: #8A2BE2;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.prospected-link:hover {
-  text-decoration: underline;
-}
-
-.prospected-table .btn-promote,
-.prospected-table .btn-delete {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-right: 6px;
-}
-
-.prospected-table .btn-promote {
-  background: #8A2BE2;
-  color: white;
-  border: none;
-}
-
-.prospected-table .btn-promote:hover {
-  background: #7B27CC;
-}
-
-.prospected-table .btn-delete {
-  background: transparent;
-  color: #EF4444;
-  border: 1px solid #EF4444;
-}
-
-.prospected-table .btn-delete:hover {
-  background: #FEF2F2;
-}
-
-/* URL input bar */
-.url-input-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.url-input {
-  flex: 1;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-family: var(--font);
-  background: #ffffff;
-  color: var(--text-primary);
-}
-
-.url-input:focus {
-  outline: none;
-  border-color: var(--purple-accent);
-}
-
-.duplicate-error-banner {
-  margin: -8px 0 16px;
-  padding: 10px 14px;
-  background: #FEF2F2;
-  border: 1px solid #FCA5A5;
-  border-radius: var(--radius);
-  color: #B91C1C;
-  font-size: 14px;
 }
 
 /* Prospected card */
@@ -1968,37 +1804,6 @@ body {
   margin-top: 16px;
   margin-bottom: 8px;
   font-weight: 600;
-}
-
-/* Add to Pipeline buttons on Contracts Prospected */
-.btn-add-pipeline {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-family: var(--font);
-  border-radius: 4px;
-  cursor: pointer;
-  margin-right: 6px;
-  background: transparent;
-  color: #6B7280;
-  border: 1px solid #D1D5DB;
-  transition: background 0.15s;
-}
-
-.btn-add-pipeline:hover {
-  background: #F9FAFB;
-}
-
-.btn-pipeline-added {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-family: var(--font);
-  border-radius: 4px;
-  cursor: not-allowed;
-  margin-right: 6px;
-  background: transparent;
-  color: #9CA3AF;
-  border: 1px solid #E5E7EB;
-  opacity: 0.7;
 }
 
 /* Push to Active button */
