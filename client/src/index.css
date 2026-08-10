@@ -3130,19 +3130,19 @@ tr.row-agreed td:first-child {
 }
 
 .sidebar-brand {
-  padding: 0 16px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   border-bottom: 1px solid var(--border-subtle);
-  height: 64px;
+  height: 72px;
   flex-shrink: 0;
 }
 .sidebar-brand-logo {
   /* Fixed height + width: auto triggers aspect-ratio scaling on
-     <img>. Source is 1448x1086, rendered ~48x36px. */
+     <img>. Source is 1254x1254 (square), rendered 44x44px. */
   display: block;
-  height: 36px;
+  height: 44px;
   width: auto;
   object-fit: contain;
 }
