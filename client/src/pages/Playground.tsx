@@ -223,7 +223,7 @@ function StatusCell({ row }: { row: MockTender }) {
       </Badge>
       {showAwaiting && (
         <span title={awaitingTooltip}>
-          <Badge variant="warning" withDot>Awaiting Info</Badge>
+          <Badge variant="warning" withDot>Chasing</Badge>
         </span>
       )}
     </div>
@@ -303,7 +303,7 @@ function ExpandPanel({ row }: { row: MockTender }) {
         <div className="dt-expand-timeline">
           <div className="dt-expand-timeline-item">
             <span className="dt-expand-timeline-date">{formatDate('2026-05-02')}</span>
-            <span>Status changed from Questionnaire Sent to Writing</span>
+            <span>Status changed from Info Gathering to Writing</span>
           </div>
           <div className="dt-expand-timeline-item">
             <span className="dt-expand-timeline-date">{formatDate('2026-04-28')}</span>
@@ -462,7 +462,7 @@ function tenderToForm(t: MockTender): Partial<TenderFormValues> {
 
 const STAGE_TABS = [
   { key: 'all', label: 'All' },
-  { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
+  { key: 'questionnaire_sent', label: 'Info Gathering' },
   { key: 'writing', label: 'Writing' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'won', label: 'Won' },
@@ -711,7 +711,7 @@ export default function Playground() {
             icon={Pencil}
             onClick={() => openEdit(MOCK_TENDERS[0]!)}
           >
-            Open Edit Tender (Writing + Awaiting Info)
+            Open Edit Tender (Writing + Chasing)
           </Button>
         </div>
       </section>
@@ -790,9 +790,9 @@ export default function Playground() {
         <h2 className="pg-section-title">Badge variants</h2>
         <div className="pg-row">
           <Badge variant="warning" size="md" withDot>Writing</Badge>
-          <Badge variant="warning" size="md" withDot>Awaiting Info</Badge>
+          <Badge variant="warning" size="md" withDot>Chasing</Badge>
           <Badge variant="info" size="md" withDot>Submitted</Badge>
-          <Badge variant="neutral" size="md" withDot>Questionnaire Sent</Badge>
+          <Badge variant="neutral" size="md" withDot>Info Gathering</Badge>
           <Badge variant="brand" size="md" withDot>Summary Sent</Badge>
           <Badge variant="success" size="md">Won</Badge>
           <Badge variant="danger" size="md">Lost</Badge>

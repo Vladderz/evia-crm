@@ -454,39 +454,6 @@ body {
 }
 
 /* ================================================================
-   STATS BAR
-   ================================================================ */
-
-.stats-bar {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 20px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stat-value {
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--purple-dark);
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* ================================================================
    CLIENT CARDS GRID
    ================================================================ */
 
@@ -505,10 +472,6 @@ body {
 @media (max-width: 640px) {
   .clients-grid {
     grid-template-columns: 1fr;
-  }
-
-  .stats-bar {
-    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -891,37 +854,6 @@ body {
 }
 
 /* ================================================================
-   LOADING SPINNER
-   ================================================================ */
-
-.loading-spinner-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 24px;
-  gap: 14px;
-}
-
-.loading-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--border);
-  border-top-color: var(--purple-accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-spinner-text {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-/* ================================================================
    EMPTY STATE & ERROR STATE
    ================================================================ */
 
@@ -1086,16 +1018,6 @@ body {
 .tender-deadline-date {
   color: var(--text-secondary);
   font-weight: 500;
-}
-
-.deadline-countdown {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.deadline-countdown.urgent {
-  font-size: 14px;
-  font-weight: 700;
 }
 
 /* Details */
@@ -1349,70 +1271,6 @@ body {
   border-radius: var(--radius-md);
 }
 
-/* Stats bar - 6-column variant */
-.stats-bar.stats-bar-6 {
-  grid-template-columns: repeat(6, 1fr);
-}
-
-.stats-bar.stats-bar-6 .stat-value {
-  font-size: 22px;
-  white-space: normal;
-  word-break: break-word;
-}
-
-@media (max-width: 1024px) {
-  .stats-bar.stats-bar-6 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .stats-bar.stats-bar-6 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-bar.stats-bar-6 {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Stats bar - 3-column variant */
-.stats-bar.stats-bar-3 {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-@media (max-width: 640px) {
-  .stats-bar.stats-bar-3 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* Stats bar - 4-column variant */
-.stats-bar.stats-bar-4 {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.stats-bar.stats-bar-4 .stat-value {
-  font-size: 22px;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.3;
-}
-
-@media (max-width: 768px) {
-  .stats-bar.stats-bar-4 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-bar.stats-bar-4 {
-    grid-template-columns: 1fr;
-  }
-}
-
 .url-extract-status {
   font-size: 12px;
   margin-top: 4px;
@@ -1467,21 +1325,6 @@ body {
   text-decoration: underline;
 }
 
-/* Source badges */
-.source-badge-fts,
-.source-badge-manual {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  color: #ffffff;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.source-badge-fts    { background-color: #10B981; }
-.source-badge-manual { background-color: #6B7280; }
-
 /* Deadline row */
 .prospected-deadline-row {
   display: flex;
@@ -1501,11 +1344,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* Deadline countdown colours */
-.deadline-countdown-green { color: #10B981; font-weight: 500; font-size: 13px; }
-.deadline-countdown-amber { color: #F59E0B; font-weight: 500; font-size: 13px; }
-.deadline-countdown-red   { color: #EF4444; font-weight: 700; font-size: 13px; }
-
 .prospected-meta-row {
   font-size: 12px;
   color: #999;
@@ -1521,24 +1359,6 @@ body {
   border-top: 1px solid #f0eef6;
 }
 
-/* Promote button */
-.btn-promote {
-  padding: 5px 14px;
-  font-size: 12px;
-  font-family: var(--font);
-  font-weight: 500;
-  border-radius: 5px;
-  cursor: pointer;
-  background: var(--purple-accent);
-  color: #ffffff;
-  border: none;
-  transition: background 0.15s;
-}
-
-.btn-promote:hover {
-  background: var(--purple-accent-hover);
-}
-
 /* ================================================================
    SALES PIPELINE PAGE
    ================================================================ */
@@ -1547,31 +1367,6 @@ body {
   max-width: 1400px;
 }
 
-/* Stats bar - 5-column variant */
-.stats-bar.stats-bar-5 {
-  grid-template-columns: repeat(5, 1fr);
-}
-
-@media (max-width: 1024px) {
-  .stats-bar.stats-bar-5 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .stats-bar.stats-bar-5 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-bar.stats-bar-5 {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Overdue follow-ups alert colour */
-.stat-value-alert { color: #EF4444; }
 
 /* Pipeline status badge colours */
 .status-contacted              { background: #6B7280; color: white; }
@@ -3438,7 +3233,7 @@ textarea.field-control {
 }
 
 /* ================================================================
-   SWITCH (custom toggle, used for Awaiting Info)
+   SWITCH (custom toggle, used for Chasing)
    ================================================================ */
 
 .switch-row {
@@ -3497,7 +3292,7 @@ textarea.field-control {
 
 /* ================================================================
    STATUS STACK - row cell that may render two stacked badges
-   (Status + optional Awaiting Info)
+   (Status + optional Chasing)
    ================================================================ */
 .status-stack {
   display: flex;
@@ -3569,10 +3364,10 @@ textarea.field-control {
   border-color: var(--danger-border);
 }
 
-/* Awaiting Info toggle - slate ghost in the off state, amber-tinted
+/* Chasing toggle - slate ghost in the off state, amber-tinted
    when the row's awaiting_info flag is on. Mirrors the amber badge
-   so a glance at the row tells you whether we're blocked on client
-   input. */
+   so a glance at the row tells you whether we're chasing the client
+   for info. */
 .dt-action-awaiting {
   background: transparent;
   color: var(--text-secondary-v1);
