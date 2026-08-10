@@ -43,7 +43,7 @@ export function AwaitingInfoDialog({
     }
   }
 
-  const description = `${tenderTitle} will be flagged as awaiting client input. The note appears on the row tooltip until you clear it.`;
+  const description = `${tenderTitle} will be flagged as chasing the client for info. The note appears on the row tooltip until you clear it.`;
 
   const footer = (
     <>
@@ -51,7 +51,7 @@ export function AwaitingInfoDialog({
         Cancel
       </Button>
       <Button variant="primary" onClick={handleConfirm} loading={submitting}>
-        Mark Awaiting Info
+        Mark Chasing
       </Button>
     </>
   );
@@ -60,13 +60,13 @@ export function AwaitingInfoDialog({
     <Modal
       open={open}
       onClose={() => !submitting && onClose()}
-      title="Mark Awaiting Info"
+      title="Mark Chasing"
       description={description}
       size="sm"
       footer={footer}
     >
       <Textarea
-        label="What information are you waiting on?"
+        label="What are you chasing them for?"
         rows={3}
         required
         value={note}
@@ -75,7 +75,7 @@ export function AwaitingInfoDialog({
           setNote(e.target.value);
           if (noteError) setNoteError(false);
         }}
-        placeholder="e.g. Awaiting completed PQQ from buyer; need clarification on TUPE staff list"
+        placeholder="e.g. Chasing completed PQQ from buyer; need clarification on TUPE staff list"
       />
     </Modal>
   );

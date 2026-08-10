@@ -44,6 +44,7 @@ import { AwaitingInfoDialog } from '../components/AwaitingInfoDialog/AwaitingInf
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
+  TENDER_STATUS_OPTIONS,
   formatCurrency,
   formatDate,
   formatRelativeDays,
@@ -74,11 +75,9 @@ const STATUS_HAS_DOT: Record<string, boolean> = {
 
 const STAGE_TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'questionnaire_sent', label: 'Questionnaire Sent' },
-  { key: 'writing', label: 'Writing' },
-  { key: 'submitted', label: 'Submitted' },
-  { key: 'won', label: 'Won' },
-  { key: 'lost', label: 'Lost' },
+  ...TENDER_STATUS_OPTIONS
+    .filter(o => o.value !== 'archived')
+    .map(o => ({ key: o.value, label: o.label })),
 ];
 
 /* -----------------------------------------------------------------
@@ -142,7 +141,7 @@ function StatusCell({ row }: { row: Tender }) {
   const showAwaiting =
     (row.status === 'writing' || row.status === 'questionnaire_sent') &&
     row.awaiting_info === true;
-  const awaitingTooltip = row.awaiting_info_note?.trim() || 'Waiting on client input';
+  const awaitingTooltip = row.awaiting_info_note?.trim() || 'Chasing client for info';
   return (
     <div className="status-stack">
       <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
@@ -150,7 +149,7 @@ function StatusCell({ row }: { row: Tender }) {
       </Badge>
       {showAwaiting && (
         <span title={awaitingTooltip}>
-          <Badge variant="warning" withDot>Awaiting Info</Badge>
+          <Badge variant="warning" withDot>Chasing</Badge>
         </span>
       )}
     </div>
@@ -213,7 +212,7 @@ interface ActionsCellProps {
  * Lost opens a small confirm dialog with an optional reason note -
  * it's terminal and worth the friction. Edit and Notes are always
  * available. Drop is always available. The funnel is
- * Questionnaire Sent -> Writing -> Submitted; the buttons mirror
+ * Info Gathering -> Writing -> Submitted; the buttons mirror
  * that direction (forward = ArrowRight, backward = ArrowLeft). */
 function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwaiting, onDrop }: ActionsCellProps) {
   const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
@@ -239,10 +238,10 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwai
         <button
           type="button"
           className={`dt-action dt-action-awaiting${awaitingOn ? ' dt-action-awaiting-active' : ''}`}
-          title={awaitingOn ? 'Clear awaiting-info status' : 'Mark this tender as awaiting client info'}
+          title={awaitingOn ? 'Clear chasing status' : 'Mark this tender as chasing client for info'}
           onClick={() => onToggleAwaiting(row)}
         >
-          <Clock size={12} aria-hidden /> {awaitingOn ? 'Clear Awaiting Info' : 'Mark Awaiting Info'}
+          <Clock size={12} aria-hidden /> {awaitingOn ? 'Clear Chasing' : 'Mark Chasing'}
         </button>
       )}
 
@@ -271,7 +270,7 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwai
             className="dt-action dt-action-ghost"
             onClick={() => onAdvance(row, 'questionnaire_sent')}
           >
-            <ArrowLeft size={12} aria-hidden /> Back to Questionnaire
+            <ArrowLeft size={12} aria-hidden /> Back to Info Gathering
           </button>
           <button
             type="button"

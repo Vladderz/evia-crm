@@ -129,7 +129,7 @@ export function TenderDrawer({
     setForm(prev => {
       const next = { ...prev, status: value as TenderStatus };
       // Clear awaiting_info if moving outside the active funnel.
-      // The flag is meaningful while the row is in Questionnaire Sent
+      // The flag is meaningful while the row is in Info Gathering
       // or Writing; on Submitted / Won / Lost / Archived it is forced
       // off (server enforces the same rule on PUT).
       if (value !== 'questionnaire_sent' && value !== 'writing') {
@@ -312,16 +312,16 @@ export function TenderDrawer({
             checked={form.awaiting_info}
             onChange={v => update('awaiting_info', v)}
             disabled={awaitingDisabled}
-            label="Awaiting info from client"
+            label="Chasing client for info"
             hint={
               awaitingDisabled
-                ? 'Only available while status is Questionnaire Sent or Writing'
+                ? 'Only available while status is Info Gathering or Writing'
                 : 'Pauses progress visibly until you have what you need'
             }
           />
           {form.awaiting_info && !awaitingDisabled && (
             <Input
-              placeholder="What are you waiting for? (optional, shown in tooltip)"
+              placeholder="What are you chasing them for? (optional, shown in tooltip)"
               value={form.awaiting_info_note}
               onChange={e => update('awaiting_info_note', e.target.value)}
             />
