@@ -1955,6 +1955,7 @@ body {
 /* Pipeline status badge colours */
 .status-contacted              { background: #6B7280; color: white; }
 .status-call-booked            { background: #3B82F6; color: white; }
+.status-waiting-room           { background: #3B82F6; color: white; }
 .status-contract-summary-sent  { background: #F59E0B; color: white; }
 
 /* Pipeline table */

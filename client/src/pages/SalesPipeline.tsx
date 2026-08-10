@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Calendar,
   CheckCircle2,
+  Clock,
   MessageCircle,
   Pencil,
   Plus,
@@ -49,8 +50,9 @@ import {
  * ----------------------------------------------------------------- */
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
-  contacted: 'neutral',
-  call_booked: 'info',
+  contacted:    'neutral',
+  call_booked:  'info',
+  waiting_room: 'info',
 };
 
 const STAGE_TABS: { key: string; label: string }[] = [
@@ -62,6 +64,7 @@ interface PipelineStats {
   active_prospects: number;
   contacted: number;
   call_booked: number;
+  waiting_room: number;
   overdue_followups: number;
   dropped_30d: number;
   converted_30d: number;
@@ -71,6 +74,7 @@ const EMPTY_STATS: PipelineStats = {
   active_prospects: 0,
   contacted: 0,
   call_booked: 0,
+  waiting_room: 0,
   overdue_followups: 0,
   dropped_30d: 0,
   converted_30d: 0,
@@ -96,7 +100,9 @@ function prospectToForm(p: PipelineProspect): Partial<ProspectFormValues> {
     submission_deadline: p.submission_deadline ? p.submission_deadline.slice(0, 10) : '',
     award_date: p.award_date ? p.award_date.slice(0, 10) : '',
     buyer: p.buyer ?? '',
-    status: (p.status === 'call_booked' ? 'call_booked' : 'contacted') as ProspectStatus,
+    status: ((p.status === 'call_booked' || p.status === 'waiting_room')
+      ? p.status
+      : 'contacted') as ProspectStatus,
     last_contact_date: p.last_contact_date ? p.last_contact_date.slice(0, 10) : '',
     next_followup_date: p.next_followup_date ? p.next_followup_date.slice(0, 10) : '',
     assigned_to: p.assigned_to ?? '',
@@ -221,7 +227,7 @@ interface ActionsCellProps {
 function ActionsCell({ row, onAdvance, onPromote, onNotes, onEdit, onDrop }: ActionsCellProps) {
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
-      {row.status === 'contacted' ? (
+      {row.status === 'contacted' && (
         <button
           type="button"
           className="dt-action dt-action-primary"
@@ -229,13 +235,32 @@ function ActionsCell({ row, onAdvance, onPromote, onNotes, onEdit, onDrop }: Act
         >
           <Calendar size={12} aria-hidden /> Book Call
         </button>
-      ) : (
+      )}
+      {row.status === 'call_booked' && (
+        <>
+          <button
+            type="button"
+            className="dt-action dt-action-ghost"
+            onClick={() => onAdvance(row)}
+          >
+            <Clock size={12} aria-hidden /> Move to Waiting Room
+          </button>
+          <button
+            type="button"
+            className="dt-action dt-action-primary"
+            onClick={() => onPromote(row)}
+          >
+            <Send size={12} aria-hidden /> Push to Active Tenders
+          </button>
+        </>
+      )}
+      {row.status === 'waiting_room' && (
         <button
           type="button"
           className="dt-action dt-action-primary"
           onClick={() => onPromote(row)}
         >
-          <Send size={12} aria-hidden /> Push to Active
+          <Send size={12} aria-hidden /> Push to Active Tenders
         </button>
       )}
       <button
@@ -406,7 +431,12 @@ export default function SalesPipeline() {
   }, [fetchData]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: prospects.length, contacted: 0, call_booked: 0 };
+    const c: Record<string, number> = {
+      all: prospects.length,
+      contacted: 0,
+      call_booked: 0,
+      waiting_room: 0,
+    };
     for (const p of prospects) {
       c[p.status] = (c[p.status] ?? 0) + 1;
     }
@@ -481,8 +511,10 @@ export default function SalesPipeline() {
 
   async function handleAdvance(p: PipelineProspect) {
     try {
-      await api.post(`/pipeline/${p.id}/advance`);
-      toast.success(`${p.company_name} moved to Call Booked`);
+      const res = await api.post(`/pipeline/${p.id}/advance`);
+      const newStatus = res.data?.status ?? '';
+      const label = PROSPECT_STATUS_LABELS[newStatus] ?? newStatus;
+      toast.success(`${p.company_name} moved to ${label}`);
       fetchData();
     } catch {
       toast.error('Failed to advance prospect. Please try again.');

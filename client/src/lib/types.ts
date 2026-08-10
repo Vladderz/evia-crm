@@ -120,7 +120,7 @@ export type TenderStatus =
  * Canonical sales-pipeline stages. Labels for these values live in
  * client/src/lib/format.ts (PROSPECT_STATUS_LABELS).
  */
-export type ProspectStatus = 'contacted' | 'call_booked'
+export type ProspectStatus = 'contacted' | 'call_booked' | 'waiting_room'
 
 /**
  * Reasons a tender or prospect can be dropped (paused into No Man's

@@ -19,14 +19,18 @@ async function logActivity(userId, action, entityType, entityId, details) {
 // (PROSPECT_STATUS_LABELS). Duplicated here because there is no shared
 // module across the client/server boundary - keep in sync on rename.
 const STATUS_LABELS = {
-  contacted: 'Contacted',
-  call_booked: 'Call Booked',
+  contacted:    'Contacted',
+  call_booked:  'Call Booked',
+  waiting_room: 'Waiting Room',
 };
 
-// Single-step advance: contacted -> call_booked. From call_booked the
-// next step is /promote (push to Active Tenders), not /advance.
+// Single-step advance chain: contacted -> call_booked -> waiting_room.
+// From waiting_room (or from call_booked, if the client commits during
+// the call) the next step is /promote (push to Active Tenders), not
+// /advance.
 const ADVANCE_MAP = {
-  contacted: 'call_booked',
+  contacted:   'call_booked',
+  call_booked: 'waiting_room',
 };
 
 const DROP_REASONS = [
@@ -52,6 +56,7 @@ router.get('/stats', async (req, res) => {
           COUNT(*) FILTER (WHERE dropped_at IS NULL) as active_prospects,
           COUNT(*) FILTER (WHERE dropped_at IS NULL AND status = 'contacted') as contacted,
           COUNT(*) FILTER (WHERE dropped_at IS NULL AND status = 'call_booked') as call_booked,
+          COUNT(*) FILTER (WHERE dropped_at IS NULL AND status = 'waiting_room') as waiting_room,
           COUNT(*) FILTER (WHERE dropped_at IS NULL AND next_followup_date <= CURRENT_DATE) as overdue_followups,
           COUNT(*) FILTER (WHERE dropped_at >= NOW() - INTERVAL '30 days') as dropped_30d
         FROM sales_pipeline
@@ -70,6 +75,7 @@ router.get('/stats', async (req, res) => {
       active_prospects: parseInt(row.active_prospects) || 0,
       contacted:        parseInt(row.contacted) || 0,
       call_booked:      parseInt(row.call_booked) || 0,
+      waiting_room:     parseInt(row.waiting_room) || 0,
       overdue_followups: parseInt(row.overdue_followups) || 0,
       dropped_30d:      parseInt(row.dropped_30d) || 0,
       converted_30d:    converted_30d,
@@ -276,13 +282,11 @@ router.post('/:id/advance', async (req, res) => {
       return res.status(400).json({ error: 'Cannot advance from current status' });
     }
 
-    const nextFollowup = nextStatus === 'agreed' ? null : 'CURRENT_DATE + INTERVAL \'3 days\'';
-
     const result = await pool.query(
       `UPDATE sales_pipeline SET
         status = $1,
         last_contact_date = CURRENT_DATE,
-        next_followup_date = ${nextStatus === 'agreed' ? 'NULL' : "CURRENT_DATE + INTERVAL '3 days'"},
+        next_followup_date = CURRENT_DATE + INTERVAL '3 days',
         updated_at = NOW()
        WHERE id = $2
        RETURNING *`,
@@ -326,10 +330,10 @@ router.post('/:id/promote', async (req, res) => {
       return res.status(404).json({ error: 'Prospect not found' });
     }
     const prospect = prospectResult.rows[0];
-    if (prospect.status !== 'call_booked' || prospect.dropped_at) {
+    if ((prospect.status !== 'call_booked' && prospect.status !== 'waiting_room') || prospect.dropped_at) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        error: 'Prospect must be at Call Booked stage and not dropped to push to Active Tenders',
+        error: 'Prospect must be at Call Booked or Waiting Room stage and not dropped to push to Active Tenders',
       });
     }
 

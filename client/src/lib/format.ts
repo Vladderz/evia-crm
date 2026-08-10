@@ -160,13 +160,15 @@ export function getStatusLabelLong(status: string | null | undefined): string {
  * ------------------------------------------------------------------ */
 
 export const PROSPECT_STATUS_LABELS: Record<string, string> = {
-  contacted:   'Contacted',
-  call_booked: 'Call Booked',
+  contacted:    'Contacted',
+  call_booked:  'Call Booked',
+  waiting_room: 'Waiting Room',
 };
 
 export const PROSPECT_STATUS_OPTIONS = [
-  { value: 'contacted',   label: PROSPECT_STATUS_LABELS.contacted! },
-  { value: 'call_booked', label: PROSPECT_STATUS_LABELS.call_booked! },
+  { value: 'contacted',    label: PROSPECT_STATUS_LABELS.contacted! },
+  { value: 'call_booked',  label: PROSPECT_STATUS_LABELS.call_booked! },
+  { value: 'waiting_room', label: PROSPECT_STATUS_LABELS.waiting_room! },
 ];
 
 export function getProspectStatusLabel(status: string | null | undefined): string {
