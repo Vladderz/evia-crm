@@ -24,12 +24,13 @@ const STATUS_LABELS = {
   waiting_room: 'Waiting Room',
 };
 
-// Single-step advance chain: contacted -> call_booked -> waiting_room.
-// From waiting_room (or from call_booked, if the client commits during
-// the call) the next step is /promote (push to Active Tenders), not
+// Single-step advance chain: call_booked -> waiting_room. New
+// prospects enter at Call Booked so there is no advance from
+// 'contacted' any more (the 34 historical contacted rows all live in
+// No Man's Land). From waiting_room (or from call_booked, if the
+// client commits during the call) the next step is /promote, not
 // /advance.
 const ADVANCE_MAP = {
-  contacted:   'call_booked',
   call_booked: 'waiting_room',
 };
 
@@ -119,7 +120,7 @@ router.post('/from-prospected/:id', async (req, res) => {
       `INSERT INTO sales_pipeline
         (company_name, tender_title, tender_url, tender_reference, submission_deadline,
          status, last_contact_date, next_followup_date, assigned_to, created_by, prospected_contract_id)
-       VALUES ($1, $2, $3, $4, $5, 'contacted', CURRENT_DATE, CURRENT_DATE + INTERVAL '3 days', $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, 'call_booked', CURRENT_DATE, CURRENT_DATE + INTERVAL '3 days', $6, $7, $8)
        RETURNING *`,
       [
         'TBC',
@@ -243,7 +244,7 @@ router.post('/', async (req, res) => {
         safeDate(submission_deadline),
         safeDate(award_date),
         safeDate(buyer),
-        status || 'contacted',
+        status || 'call_booked',
         safeDate(assigned_to),
         safeDate(last_contact_date),
         safeDate(next_followup_date),

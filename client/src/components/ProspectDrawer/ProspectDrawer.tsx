@@ -54,7 +54,7 @@ const EMPTY: ProspectFormValues = {
   submission_deadline: '',
   award_date: '',
   buyer: '',
-  status: 'contacted',
+  status: 'call_booked',
   last_contact_date: '',
   next_followup_date: '',
   assigned_to: '',

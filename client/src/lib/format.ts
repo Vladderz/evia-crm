@@ -177,14 +177,25 @@ export function getStatusLabelLong(status: string | null | undefined): string {
  * Prospect (Sales Pipeline) status labels
  * ------------------------------------------------------------------ */
 
+/**
+ * Full label map, keyed by every prospect status value the DB has ever
+ * held. Kept complete on purpose so historical rows in No Man's Land
+ * still render a friendly label - notably the 34 dropped 'contacted'
+ * rows, even though 'contacted' is no longer selectable in the UI.
+ */
 export const PROSPECT_STATUS_LABELS: Record<string, string> = {
   contacted:    'Contacted',
   call_booked:  'Call Booked',
   waiting_room: 'Waiting Room',
 };
 
+/**
+ * Selectable stages for live prospects: what the stage tabs on Sales
+ * Pipeline and the Status dropdown on ProspectDrawer offer. 'contacted'
+ * is deliberately excluded - new prospects now enter at Call Booked.
+ * If you need a label for a historical value, use PROSPECT_STATUS_LABELS.
+ */
 export const PROSPECT_STATUS_OPTIONS = [
-  { value: 'contacted',    label: PROSPECT_STATUS_LABELS.contacted! },
   { value: 'call_booked',  label: PROSPECT_STATUS_LABELS.call_booked! },
   { value: 'waiting_room', label: PROSPECT_STATUS_LABELS.waiting_room! },
 ];

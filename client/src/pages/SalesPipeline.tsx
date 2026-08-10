@@ -227,15 +227,6 @@ interface ActionsCellProps {
 function ActionsCell({ row, onAdvance, onPromote, onNotes, onEdit, onDrop }: ActionsCellProps) {
   return (
     <span className="dt-actions" onClick={e => e.stopPropagation()}>
-      {row.status === 'contacted' && (
-        <button
-          type="button"
-          className="dt-action dt-action-primary"
-          onClick={() => onAdvance(row)}
-        >
-          <Calendar size={12} aria-hidden /> Book Call
-        </button>
-      )}
       {row.status === 'call_booked' && (
         <>
           <button
@@ -387,7 +378,7 @@ export default function SalesPipeline() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [stage, setStage] = useState<string>('contacted');
+  const [stage, setStage] = useState<string>('call_booked');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
