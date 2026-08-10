@@ -37,7 +37,12 @@ import {
 import { DropDialog } from '../components/DropDialog/DropDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatDate, formatRelativeDays } from '../lib/format';
+import {
+  formatDate,
+  formatRelativeDays,
+  PROSPECT_STATUS_LABELS,
+  PROSPECT_STATUS_OPTIONS,
+} from '../lib/format';
 
 /* -----------------------------------------------------------------
  * Status -> Badge mapping (only 2 stages now)
@@ -48,15 +53,9 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   call_booked: 'info',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  contacted: 'Contacted',
-  call_booked: 'Call Booked',
-};
-
 const STAGE_TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'contacted', label: 'Contacted' },
-  { key: 'call_booked', label: 'Call Booked' },
+  ...PROSPECT_STATUS_OPTIONS.map(o => ({ key: o.value, label: o.label })),
 ];
 
 interface PipelineStats {
@@ -174,7 +173,7 @@ function TenderCell({ row }: { row: PipelineProspect }) {
 
 function StatusCell({ row }: { row: PipelineProspect }) {
   const variant = STATUS_VARIANT[row.status] ?? 'neutral';
-  const label = STATUS_LABEL[row.status] ?? row.status;
+  const label = PROSPECT_STATUS_LABELS[row.status] ?? row.status;
   return <Badge variant={variant} withDot>{label}</Badge>;
 }
 

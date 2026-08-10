@@ -105,6 +105,24 @@ export interface PipelineNote {
 }
 
 /**
+ * Canonical tender workflow stages. Labels for these values live in
+ * client/src/lib/format.ts (TENDER_STATUS_LABELS / _LONG).
+ */
+export type TenderStatus =
+  | 'questionnaire_sent'
+  | 'writing'
+  | 'submitted'
+  | 'won'
+  | 'lost'
+  | 'archived'
+
+/**
+ * Canonical sales-pipeline stages. Labels for these values live in
+ * client/src/lib/format.ts (PROSPECT_STATUS_LABELS).
+ */
+export type ProspectStatus = 'contacted' | 'call_booked'
+
+/**
  * Reasons a tender or prospect can be dropped (paused into No Man's
  * Land). Backed by check constraints on tenders and sales_pipeline.
  */

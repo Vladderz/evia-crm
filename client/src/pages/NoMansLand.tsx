@@ -20,20 +20,15 @@ import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
   DROP_REASON_OPTIONS,
+  PROSPECT_STATUS_LABELS,
+  TENDER_STATUS_LABELS,
   formatDate,
   getDropReasonLabel,
-  getStatusLabel,
 } from '../lib/format';
 
 const STAGE_LABEL: Record<string, string> = {
-  contacted: 'Contacted',
-  call_booked: 'Call Booked',
-  writing: 'Writing',
-  questionnaire_sent: 'Questionnaire Sent',
-  submitted: 'Submitted',
-  won: 'Won',
-  lost: 'Lost',
-  archived: 'Archived',
+  ...PROSPECT_STATUS_LABELS,
+  ...TENDER_STATUS_LABELS,
 };
 
 function rowKey(row: NoMansLandRow): string {
@@ -320,7 +315,7 @@ export default function NoMansLand() {
       width: 160,
       render: row => (
         <Badge variant="neutral">
-          {STAGE_LABEL[row.stage_when_dropped] ?? getStatusLabel(row.stage_when_dropped) ?? row.stage_when_dropped}
+          {STAGE_LABEL[row.stage_when_dropped] ?? row.stage_when_dropped}
         </Badge>
       ),
     },

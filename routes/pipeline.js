@@ -15,6 +15,9 @@ async function logActivity(userId, action, entityType, entityId, details) {
   }
 }
 
+// Canonical labels live in client/src/lib/format.ts
+// (PROSPECT_STATUS_LABELS). Duplicated here because there is no shared
+// module across the client/server boundary - keep in sync on rename.
 const STATUS_LABELS = {
   contacted: 'Contacted',
   call_booked: 'Call Booked',

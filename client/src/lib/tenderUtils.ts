@@ -34,18 +34,6 @@ export function calculateEviaFee(amount: number | null): string {
   return '\u00a3' + Math.round(fee).toLocaleString('en-GB')
 }
 
-const STATUS_LABELS_MAP: Record<string, string> = {
-  questionnaire_sent: 'Questionnaire Sent',
-  writing: 'Writing',
-  submitted: 'Submitted / Awaiting Result',
-  won: 'Won',
-  lost: 'Lost',
-}
-
-export function getStatusLabel(status: string): string {
-  return STATUS_LABELS_MAP[status] ?? status
-}
-
 export function getStatusColor(status: string): string {
   return `status-${status}`
 }

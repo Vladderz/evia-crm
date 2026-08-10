@@ -4,8 +4,10 @@ import { Input } from '../Input/Input';
 import { Textarea } from '../Textarea/Textarea';
 import { Select } from '../Select/Select';
 import { Button } from '../Button/Button';
+import { PROSPECT_STATUS_OPTIONS } from '../../lib/format';
+import type { ProspectStatus } from '../../lib/types';
 
-export type ProspectStatus = 'contacted' | 'call_booked';
+export type { ProspectStatus };
 
 export interface ProspectFormValues {
   company_name: string;
@@ -58,11 +60,6 @@ const EMPTY: ProspectFormValues = {
   assigned_to: '',
   notes: '',
 };
-
-const STATUS_OPTIONS = [
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'call_booked', label: 'Call Booked' },
-];
 
 // Radix Select.Item forbids value="". Sentinel stands in for the
 // "Unassigned" option in the dropdown; we translate back to '' before
@@ -246,7 +243,7 @@ export function ProspectDrawer({
           label="Status"
           value={form.status}
           onValueChange={v => update('status', v as ProspectStatus)}
-          options={STATUS_OPTIONS}
+          options={PROSPECT_STATUS_OPTIONS}
         />
 
         <div className="drawer-row">

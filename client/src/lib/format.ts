@@ -118,7 +118,7 @@ export function formatRelativeDays(
  * surfaces. getStatusLabelLong returns the verbose form for detail
  * views (per brief: "Submitted / Awaiting Result" only in detail).
  */
-const TENDER_STATUS_LABELS: Record<string, string> = {
+export const TENDER_STATUS_LABELS: Record<string, string> = {
   questionnaire_sent: 'Questionnaire Sent',
   writing: 'Writing',
   submitted: 'Submitted',
@@ -127,7 +127,7 @@ const TENDER_STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
 };
 
-const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
+export const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
   questionnaire_sent: 'Questionnaire Sent',
   writing: 'Writing',
   submitted: 'Submitted / Awaiting Result',
@@ -135,6 +135,15 @@ const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
   lost: 'Lost',
   archived: 'Archived',
 };
+
+export const TENDER_STATUS_OPTIONS = [
+  { value: 'questionnaire_sent', label: TENDER_STATUS_LABELS.questionnaire_sent! },
+  { value: 'writing',            label: TENDER_STATUS_LABELS.writing! },
+  { value: 'submitted',          label: TENDER_STATUS_LABELS.submitted! },
+  { value: 'won',                label: TENDER_STATUS_LABELS.won! },
+  { value: 'lost',               label: TENDER_STATUS_LABELS.lost! },
+  { value: 'archived',           label: TENDER_STATUS_LABELS.archived! },
+];
 
 export function getStatusLabel(status: string | null | undefined): string {
   if (!status) return '';
@@ -144,6 +153,25 @@ export function getStatusLabel(status: string | null | undefined): string {
 export function getStatusLabelLong(status: string | null | undefined): string {
   if (!status) return '';
   return TENDER_STATUS_LABELS_LONG[status] ?? status;
+}
+
+/* ------------------------------------------------------------------
+ * Prospect (Sales Pipeline) status labels
+ * ------------------------------------------------------------------ */
+
+export const PROSPECT_STATUS_LABELS: Record<string, string> = {
+  contacted:   'Contacted',
+  call_booked: 'Call Booked',
+};
+
+export const PROSPECT_STATUS_OPTIONS = [
+  { value: 'contacted',   label: PROSPECT_STATUS_LABELS.contacted! },
+  { value: 'call_booked', label: PROSPECT_STATUS_LABELS.call_booked! },
+];
+
+export function getProspectStatusLabel(status: string | null | undefined): string {
+  if (!status) return '';
+  return PROSPECT_STATUS_LABELS[status] ?? status;
 }
 
 /* ------------------------------------------------------------------

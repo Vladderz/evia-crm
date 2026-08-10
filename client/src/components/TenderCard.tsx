@@ -1,5 +1,6 @@
 import type { Tender } from '../lib/types'
-import { formatDate, getStatusLabel } from '../lib/tenderUtils'
+import { formatDate } from '../lib/tenderUtils'
+import { getStatusLabelLong } from '../lib/format'
 
 interface Props {
   tender: Tender
@@ -99,7 +100,7 @@ export default function TenderCard({ tender, view, onEdit, onDelete, onAdvance, 
           )}
         </div>
         <span className={`status-badge status-${tender.status}`}>
-          {getStatusLabel(tender.status)}
+          {getStatusLabelLong(tender.status)}
         </span>
       </div>
 

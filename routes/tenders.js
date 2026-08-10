@@ -506,6 +506,10 @@ router.put('/:id', async (req, res) => {
     }
 
     if (prev.status !== status) {
+      // Canonical labels live in client/src/lib/format.ts
+      // (TENDER_STATUS_LABELS_LONG). Duplicated here because there is
+      // no shared module across the client/server boundary - keep in
+      // sync on rename.
       const TENDER_STATUS_LABELS = {
         questionnaire_sent: 'Questionnaire Sent',
         writing: 'Writing',

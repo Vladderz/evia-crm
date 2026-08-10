@@ -5,14 +5,10 @@ import { Textarea } from '../Textarea/Textarea';
 import { Select } from '../Select/Select';
 import { Switch } from '../Switch/Switch';
 import { Button } from '../Button/Button';
+import { TENDER_STATUS_OPTIONS } from '../../lib/format';
+import type { TenderStatus } from '../../lib/types';
 
-export type TenderStatus =
-  | 'writing'
-  | 'questionnaire_sent'
-  | 'submitted'
-  | 'won'
-  | 'lost'
-  | 'archived';
+export type { TenderStatus };
 
 export interface TenderFormValues {
   title: string;
@@ -66,15 +62,6 @@ const EMPTY: TenderFormValues = {
   assigned_to: '',
   notes: '',
 };
-
-const STATUS_OPTIONS = [
-  { value: 'questionnaire_sent', label: 'Questionnaire Sent' },
-  { value: 'writing', label: 'Writing' },
-  { value: 'submitted', label: 'Submitted' },
-  { value: 'won', label: 'Won' },
-  { value: 'lost', label: 'Lost' },
-  { value: 'archived', label: 'Archived' },
-];
 
 // Radix Select.Item forbids value="". Sentinels stand in for the
 // "unset" options in the dropdown; we translate back to '' before
@@ -307,7 +294,7 @@ export function TenderDrawer({
           label="Status"
           value={form.status}
           onValueChange={handleStatusChange}
-          options={STATUS_OPTIONS}
+          options={TENDER_STATUS_OPTIONS}
         />
 
         <div

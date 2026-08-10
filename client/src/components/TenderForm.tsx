@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import api from '../lib/api'
 import type { Client, Tender } from '../lib/types'
+import { TENDER_STATUS_LABELS_LONG } from '../lib/format'
 import { useToast } from './ToastProvider'
 
 interface Props {
@@ -41,15 +42,15 @@ function calcAutoFee(valueStr: string): string {
 }
 
 const ADD_STATUSES = [
-  { value: 'questionnaire_sent', label: 'Questionnaire Sent' },
-  { value: 'writing', label: 'Writing' },
-  { value: 'submitted', label: 'Submitted / Awaiting Result' },
+  { value: 'questionnaire_sent', label: TENDER_STATUS_LABELS_LONG.questionnaire_sent! },
+  { value: 'writing',            label: TENDER_STATUS_LABELS_LONG.writing! },
+  { value: 'submitted',          label: TENDER_STATUS_LABELS_LONG.submitted! },
 ]
 
 const EDIT_STATUSES = [
   ...ADD_STATUSES,
-  { value: 'won', label: 'Won' },
-  { value: 'lost', label: 'Lost' },
+  { value: 'won',  label: TENDER_STATUS_LABELS_LONG.won! },
+  { value: 'lost', label: TENDER_STATUS_LABELS_LONG.lost! },
 ]
 
 export default function TenderForm({ tender, clients, currentUserName, onSuccess, onClose }: Props) {
