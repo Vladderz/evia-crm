@@ -1861,21 +1861,10 @@ tr.row-agreed td:first-child {
   outline-offset: 1px;
 }
 
-.dt-action-ghost {
-  background: transparent;
-  color: var(--text-secondary-v1);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-color: var(--border-default);
-}
-.dt-action-ghost:hover {
-  background: var(--surface-muted);
-  color: var(--brand-active);
-  border-color: var(--brand-primary);
-}
-
-/* Brand-tinted ghost link for in-panel "Show more" / "View all" affordances. */
+/* Brand-tinted ghost link for in-panel "Show more" / "View all" affordances.
+ * The only remaining .dt-action-* variant - all row-action buttons now
+ * go through the Button primitive. This one stays raw because it renders
+ * as a text link, not a chrome-carrying button. */
 .dt-action-link {
   background: transparent;
   color: var(--brand-text);
@@ -1887,18 +1876,6 @@ tr.row-agreed td:first-child {
   color: var(--brand-active);
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-
-.dt-action-primary {
-  background: var(--brand-primary);
-  color: var(--text-inverse);
-  font-size: 11px;
-  padding: 4px 8px;
-  border-color: var(--brand-primary);
-}
-.dt-action-primary:hover {
-  background: var(--brand-hover);
-  border-color: var(--brand-hover);
 }
 
 /* Skeleton */
@@ -3141,63 +3118,20 @@ textarea.field-control {
     radial-gradient(circle, var(--brand-primary) 0 4px, transparent 5px);
 }
 
-/* Slate-toned ghost action button - used for Drop, distinct from
-   the brand-tinted hover of regular ghost actions. */
-.dt-action-drop {
-  background: transparent;
-  color: var(--text-secondary-v1);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-color: var(--border-default);
-}
-.dt-action-drop:hover {
-  background: var(--surface-muted);
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
-/* Chasing toggle - slate ghost in the off state, amber-tinted
-   when the row's awaiting_info flag is on. Mirrors the amber badge
-   so a glance at the row tells you whether we're chasing the client
-   for info. */
-.dt-action-awaiting {
-  background: transparent;
-  color: var(--text-secondary-v1);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-color: var(--border-default);
-}
-.dt-action-awaiting:hover {
-  background: var(--warning-subtle);
-  color: var(--warning);
-  border-color: var(--warning-border);
-}
-.dt-action-awaiting.dt-action-awaiting-active {
+/* Chasing toggle - layered onto a Button variant="ghost" via className
+   to paint amber when the tender is actively being chased. Mirrors the
+   amber badge so a glance at the row tells you we are blocked on the
+   client. */
+.btn-chasing-active,
+.btn-chasing-active:not(:disabled) {
   background: var(--badge-warning-bg);
   color: var(--badge-warning-text);
   border-color: var(--badge-warning-dot);
 }
-.dt-action-awaiting.dt-action-awaiting-active:hover {
+.btn-chasing-active:hover:not(:disabled) {
   background: var(--warning-subtle);
   color: var(--warning);
-}
-
-/* Danger-toned action button - mirrors dt-action-primary visually
-   but in danger red. Used for Mark Lost on submitted tender rows so
-   the Won / Lost outcomes sit side-by-side with equal weight. */
-.dt-action-danger {
-  background: transparent;
-  color: var(--danger);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 8px;
-  border-color: var(--danger-border);
-}
-.dt-action-danger:hover {
-  background: var(--badge-danger-bg);
-  border-color: var(--danger);
+  border-color: var(--warning-border);
 }
 
 /* ================================================================

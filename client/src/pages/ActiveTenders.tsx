@@ -239,102 +239,68 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwai
   const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
   const awaitingOn = inActiveStage && row.awaiting_info === true;
   return (
-    <span className="dt-actions" onClick={e => e.stopPropagation()}>
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onNotes(row)}
-      >
-        <StickyNote size={12} aria-hidden /> Notes
-      </button>
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onEdit(row)}
-      >
-        <Pencil size={12} aria-hidden /> Edit
-      </button>
+    <span
+      className="dt-actions"
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'inline-flex', gap: 6 }}
+    >
+      <Button variant="ghost" size="sm" icon={StickyNote} onClick={() => onNotes(row)}>
+        Notes
+      </Button>
+      <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
+        Edit
+      </Button>
 
       {inActiveStage && (
-        <button
-          type="button"
-          className={`dt-action dt-action-awaiting${awaitingOn ? ' dt-action-awaiting-active' : ''}`}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={Clock}
+          className={awaitingOn ? 'btn-chasing-active' : undefined}
           title={awaitingOn ? 'Clear chasing status' : 'Mark this tender as chasing client for info'}
           onClick={() => onToggleAwaiting(row)}
         >
-          <Clock size={12} aria-hidden /> {awaitingOn ? 'Clear Chasing' : 'Mark Chasing'}
-        </button>
+          {awaitingOn ? 'Clear Chasing' : 'Mark Chasing'}
+        </Button>
       )}
 
       {row.status === 'questionnaire_sent' && (
         <>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'writing')}
-          >
-            <ArrowRight size={12} aria-hidden /> Move to Writing
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'submitted')}
-          >
-            <Send size={12} aria-hidden /> Mark Submitted
-          </button>
+          <Button variant="ghost" size="sm" icon={ArrowRight} onClick={() => onAdvance(row, 'writing')}>
+            Move to Writing
+          </Button>
+          <Button variant="ghost" size="sm" icon={Send} onClick={() => onAdvance(row, 'submitted')}>
+            Mark Submitted
+          </Button>
         </>
       )}
       {row.status === 'writing' && (
         <>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'questionnaire_sent')}
-          >
-            <ArrowLeft size={12} aria-hidden /> Back to Info Gathering
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'submitted')}
-          >
-            <Send size={12} aria-hidden /> Mark Submitted
-          </button>
+          <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => onAdvance(row, 'questionnaire_sent')}>
+            Back to Info Gathering
+          </Button>
+          <Button variant="ghost" size="sm" icon={Send} onClick={() => onAdvance(row, 'submitted')}>
+            Mark Submitted
+          </Button>
         </>
       )}
       {row.status === 'submitted' && (
         <>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row, 'writing')}
-          >
-            <ArrowLeft size={12} aria-hidden /> Back to Writing
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-primary"
-            onClick={() => onAdvance(row, 'won')}
-          >
-            <Check size={12} aria-hidden /> Mark Won
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-danger"
-            onClick={() => onMarkLost(row)}
-          >
-            <X size={12} aria-hidden /> Mark Lost
-          </button>
+          <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => onAdvance(row, 'writing')}>
+            Back to Writing
+          </Button>
+          <Button variant="primary" size="sm" icon={Check} onClick={() => onAdvance(row, 'won')}>
+            Mark Won
+          </Button>
+          <Button variant="danger" size="sm" icon={X} onClick={() => onMarkLost(row)}>
+            Mark Lost
+          </Button>
         </>
       )}
 
-      <button
-        type="button"
-        className="dt-action dt-action-drop"
-        onClick={() => onDrop(row)}
-      >
+      <Button variant="danger" size="sm" onClick={() => onDrop(row)}>
         Drop
-      </button>
+      </Button>
     </span>
   );
 }

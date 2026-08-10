@@ -151,29 +151,20 @@ interface ActionsCellProps {
 
 function ActionsCell({ row, onNotes, onEdit, onDelete }: ActionsCellProps) {
   return (
-    <span className="dt-actions" onClick={e => e.stopPropagation()}>
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onNotes(row)}
-      >
-        <StickyNote size={12} aria-hidden /> Notes
-      </button>
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onEdit(row)}
-      >
-        <Pencil size={12} aria-hidden /> Edit
-      </button>
-      <button
-        type="button"
-        className="dt-action dt-action-drop"
-        onClick={() => onDelete(row)}
-        aria-label="Delete"
-      >
-        <Trash2 size={12} aria-hidden /> Delete
-      </button>
+    <span
+      className="dt-actions"
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'inline-flex', gap: 6 }}
+    >
+      <Button variant="ghost" size="sm" icon={StickyNote} onClick={() => onNotes(row)}>
+        Notes
+      </Button>
+      <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
+        Edit
+      </Button>
+      <Button variant="danger" size="sm" icon={Trash2} onClick={() => onDelete(row)}>
+        Delete
+      </Button>
     </span>
   );
 }
@@ -440,7 +431,7 @@ export default function ClientBook() {
     {
       key: 'actions',
       header: '',
-      width: 240,
+      width: 250,
       align: 'right',
       render: row => (
         <ActionsCell

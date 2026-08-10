@@ -270,22 +270,22 @@ function ActionsCell({
 }) {
   const showMarkWon = row.status === 'submitted';
   return (
-    <span className="dt-actions" onClick={e => e.stopPropagation()}>
-      <button type="button" className="dt-action dt-action-ghost">
-        <StickyNote size={12} aria-hidden /> Notes
-      </button>
+    <span
+      className="dt-actions"
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'inline-flex', gap: 6 }}
+    >
+      <Button variant="ghost" size="sm" icon={StickyNote}>
+        Notes
+      </Button>
       {showMarkWon ? (
-        <button type="button" className="dt-action dt-action-primary">
-          <Check size={12} aria-hidden /> Mark Won
-        </button>
+        <Button variant="primary" size="sm" icon={Check}>
+          Mark Won
+        </Button>
       ) : (
-        <button
-          type="button"
-          className="dt-action dt-action-ghost"
-          onClick={() => onEdit(row)}
-        >
-          <Pencil size={12} aria-hidden /> Edit
-        </button>
+        <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
+          Edit
+        </Button>
       )}
     </span>
   );

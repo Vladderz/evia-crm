@@ -225,55 +225,35 @@ interface ActionsCellProps {
 
 function ActionsCell({ row, onAdvance, onPromote, onNotes, onEdit, onDrop }: ActionsCellProps) {
   return (
-    <span className="dt-actions" onClick={e => e.stopPropagation()}>
+    <span
+      className="dt-actions"
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'inline-flex', gap: 6 }}
+    >
       {row.status === 'call_booked' && (
         <>
-          <button
-            type="button"
-            className="dt-action dt-action-ghost"
-            onClick={() => onAdvance(row)}
-          >
-            <Clock size={12} aria-hidden /> Move to Waiting Room
-          </button>
-          <button
-            type="button"
-            className="dt-action dt-action-primary"
-            onClick={() => onPromote(row)}
-          >
-            <Send size={12} aria-hidden /> Push to Active Tenders
-          </button>
+          <Button variant="ghost" size="sm" icon={Clock} onClick={() => onAdvance(row)}>
+            Move to Waiting Room
+          </Button>
+          <Button variant="primary" size="sm" icon={Send} onClick={() => onPromote(row)}>
+            Push to Active Tenders
+          </Button>
         </>
       )}
       {row.status === 'waiting_room' && (
-        <button
-          type="button"
-          className="dt-action dt-action-primary"
-          onClick={() => onPromote(row)}
-        >
-          <Send size={12} aria-hidden /> Push to Active Tenders
-        </button>
+        <Button variant="primary" size="sm" icon={Send} onClick={() => onPromote(row)}>
+          Push to Active Tenders
+        </Button>
       )}
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onNotes(row)}
-      >
-        <StickyNote size={12} aria-hidden /> Notes
-      </button>
-      <button
-        type="button"
-        className="dt-action dt-action-ghost"
-        onClick={() => onEdit(row)}
-      >
-        <Pencil size={12} aria-hidden /> Edit
-      </button>
-      <button
-        type="button"
-        className="dt-action dt-action-drop"
-        onClick={() => onDrop(row)}
-      >
+      <Button variant="ghost" size="sm" icon={StickyNote} onClick={() => onNotes(row)}>
+        Notes
+      </Button>
+      <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
+        Edit
+      </Button>
+      <Button variant="danger" size="sm" onClick={() => onDrop(row)}>
         Drop
-      </button>
+      </Button>
     </span>
   );
 }
@@ -647,7 +627,7 @@ export default function SalesPipeline() {
     {
       key: 'actions',
       header: '',
-      width: 280,
+      width: 600,
       align: 'right',
       render: row => (
         <ActionsCell
