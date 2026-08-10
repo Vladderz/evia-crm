@@ -521,8 +521,8 @@ export default function ActiveTenders() {
     return {
       active: counts.all ?? 0,
       submitted: counts.submitted ?? 0,
-      wonValue: won.reduce((s, t) => s + (t.estimated_value ?? 0), 0),
-      wonFees: won.reduce((s, t) => s + (t.evia_fee ?? 0), 0),
+      wonValue: won.reduce((s, t) => s + Number(t.estimated_value ?? 0), 0),
+      wonFees: won.reduce((s, t) => s + Number(t.evia_fee ?? 0), 0),
       wonCount: won.length,
       decided,
       winRate: decided > 0 ? Math.round((won.length / decided) * 100) : 0,
