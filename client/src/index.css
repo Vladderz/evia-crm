@@ -1523,71 +1523,65 @@ body {
   background: #FEF2F2;
 }
 
-/* Notes timeline */
+/* Notes panel - add-note row sits at the top of the drawer body,
+ * timeline scrolls below. Design tokens throughout so the panel
+ * inherits any theme changes from the shared drawer / badge stack. */
+.notes-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+.notes-add-row .field { flex: 1; }
+.notes-add-row .field textarea { resize: vertical; }
+.notes-add-row > button { align-self: flex-end; }
+
 .notes-timeline {
-  max-height: 500px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.note-entry {
-  padding: 12px 0;
-  border-bottom: 1px solid #e0d9f5;
+.notes-entry {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
 }
-
-.note-entry:last-child {
+.notes-entry:last-child {
   border-bottom: none;
+  padding-bottom: 0;
 }
 
-.note-meta {
+.notes-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
   font-size: 12px;
-  color: #9488b8;
-  margin-bottom: 4px;
+  color: var(--text-tertiary);
 }
-
-.note-meta strong {
+.notes-entry-author {
   font-weight: 600;
-  color: #2D1B69;
+  color: var(--text-primary-v1);
+}
+.notes-entry-date {
+  color: var(--text-tertiary);
 }
 
-.note-text {
+.notes-entry-text {
   font-size: 14px;
-  color: #1a1040;
+  color: var(--text-primary-v1);
   line-height: 1.5;
   white-space: pre-wrap;
 }
 
-.note-system .note-meta strong {
-  font-style: italic;
-  color: #9488b8;
-  font-weight: 400;
-}
-
-.note-system .note-text {
-  color: #9488b8;
-  font-style: italic;
-}
-
-.note-input-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.note-input-row textarea {
-  flex: 1;
-  resize: none;
-}
-
-.note-input-row button {
-  flex-shrink: 0;
-  align-self: flex-end;
-}
-
-.notes-empty {
-  font-size: 12px;
-  color: #9488b8;
+.notes-timeline-state {
+  font-size: 13px;
+  color: var(--text-tertiary);
   text-align: center;
   padding: 24px 0;
+  margin: 0;
 }
 
 /* Form section headings */
