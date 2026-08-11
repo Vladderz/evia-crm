@@ -2,27 +2,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   Building2,
-  CheckCircle2,
   Pencil,
   Plus,
+  Send,
   StickyNote,
-  Target,
   Trash2,
-  Users,
+  Trophy,
+  UserPlus,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { Client } from '../lib/types';
+import type { Client, Tender } from '../lib/types';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
 import { KPITile } from '../components/KPITile/KPITile';
-import { StageTabs } from '../components/StageTabs/StageTabs';
 import { FilterBar } from '../components/FilterBar/FilterBar';
 import {
   DataTable,
   TruncatedText,
   type Column,
 } from '../components/DataTable/DataTable';
-import { Badge, type BadgeVariant } from '../components/Badge/Badge';
 import { Button } from '../components/Button/Button';
 import { Select } from '../components/Select/Select';
 import {
@@ -37,39 +35,6 @@ import { formatDate } from '../lib/format';
  * Constants
  * ----------------------------------------------------------------- */
 
-interface Stats {
-  total: number;
-  active_client: number;
-  seeking_tender: number;
-  prospect: number;
-}
-
-const EMPTY_STATS: Stats = {
-  total: 0,
-  active_client: 0,
-  seeking_tender: 0,
-  prospect: 0,
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  active_client: 'Active Client',
-  seeking_tender: 'Seeking Tender',
-  prospect: 'Prospect',
-};
-
-const STATUS_VARIANT: Record<string, BadgeVariant> = {
-  active_client: 'success',
-  seeking_tender: 'info',
-  prospect: 'neutral',
-};
-
-const STAGE_TABS: { key: string; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'active_client', label: 'Active Client' },
-  { key: 'seeking_tender', label: 'Seeking Tender' },
-  { key: 'prospect', label: 'Prospect' },
-];
-
 type SortKey = 'recent' | 'alpha' | 'oldest';
 
 const SORT_OPTIONS = [
@@ -83,6 +48,18 @@ const MANAGER_LABEL: Record<string, string> = {
   tristan: 'Tristan',
   both: 'Both',
 };
+
+/* Tender statuses that count a client as having a live tender - i.e.
+ * something still in the funnel. Won / Lost / Archived / Dropped are
+ * excluded because the pipeline no longer needs attention. Kept in
+ * sync with the Active Tenders / Scoreboard definitions. */
+const LIVE_TENDER_STATUSES: ReadonlySet<string> = new Set([
+  'questionnaire_sent',
+  'writing',
+  'submitted',
+]);
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 /* -----------------------------------------------------------------
  * Cell renderers
@@ -128,12 +105,6 @@ function EmailCell({ row }: { row: Client }) {
 function PlainCell({ value }: { value: string | null }) {
   if (!value) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
   return <TruncatedText>{value}</TruncatedText>;
-}
-
-function StatusCell({ row }: { row: Client }) {
-  const variant = STATUS_VARIANT[row.status] ?? 'neutral';
-  const label = STATUS_LABEL[row.status] ?? row.status;
-  return <Badge variant={variant} withDot>{label}</Badge>;
 }
 
 function ManagerCell({ row }: { row: Client }) {
@@ -216,6 +187,9 @@ function clientToForm(c: Client): Partial<ClientFormValues> {
     website: c.website ?? '',
     sector: c.sector ?? '',
     region: c.region ?? '',
+    /* Preserve the existing status on edit rather than silently
+     * rewriting historical rows. The Add flow uses ClientDrawer's
+     * EMPTY default of 'active_client' instead. */
     status: c.status,
     account_manager: (c.account_manager ?? 'vlad') as ClientFormValues['account_manager'],
     notes: c.notes ?? '',
@@ -230,11 +204,10 @@ export default function ClientBook() {
   const toast = useToast();
 
   const [clients, setClients] = useState<Client[]>([]);
-  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [tenders, setTenders] = useState<Tender[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [stage, setStage] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [managerFilter, setManagerFilter] = useState<string | undefined>(undefined);
@@ -258,12 +231,16 @@ export default function ClientBook() {
   const fetchData = useCallback(async () => {
     setLoadError(false);
     try {
-      const [clientsRes, statsRes] = await Promise.all([
+      /* /tenders already excludes dropped + archived, so the sets we
+       * derive below (live-tender clients, won-for clients) match the
+       * definitions used on Active Tenders and Scoreboard without any
+       * extra filtering. */
+      const [clientsRes, tendersRes] = await Promise.all([
         api.get('/clients'),
-        api.get('/clients/stats'),
+        api.get('/tenders'),
       ]);
       setClients(clientsRes.data);
-      setStats(statsRes.data ?? EMPTY_STATS);
+      setTenders(tendersRes.data);
     } catch {
       setLoadError(true);
     } finally {
@@ -275,23 +252,35 @@ export default function ClientBook() {
     fetchData();
   }, [fetchData]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {
-      all: clients.length,
-      active_client: 0,
-      seeking_tender: 0,
-      prospect: 0,
-    };
-    for (const client of clients) {
-      c[client.status] = (c[client.status] ?? 0) + 1;
+  const kpis = useMemo(() => {
+    const totalClients = clients.length;
+
+    const liveClientIds = new Set<number>();
+    const wonClientIds = new Set<number>();
+    for (const t of tenders) {
+      if (t.client_id == null) continue;
+      if (LIVE_TENDER_STATUSES.has(t.status)) liveClientIds.add(t.client_id);
+      if (t.status === 'won') wonClientIds.add(t.client_id);
     }
-    return c;
-  }, [clients]);
+
+    const cutoff = Date.now() - THIRTY_DAYS_MS;
+    let newIn30d = 0;
+    for (const c of clients) {
+      const created = new Date(c.created_at).getTime();
+      if (Number.isFinite(created) && created >= cutoff) newIn30d += 1;
+    }
+
+    return {
+      totalClients,
+      liveTenderClients: liveClientIds.size,
+      wonForClients: wonClientIds.size,
+      newIn30d,
+    };
+  }, [clients, tenders]);
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
     const filteredList = clients.filter(c => {
-      if (stage !== 'all' && c.status !== stage) return false;
       if (managerFilter) {
         const m = c.account_manager ?? 'vlad';
         if (managerFilter === 'both' && m !== 'both') return false;
@@ -309,9 +298,7 @@ export default function ClientBook() {
       if (sortKey === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
-  }, [clients, stage, debouncedSearch, managerFilter, sortKey]);
-
-  const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
+  }, [clients, debouncedSearch, managerFilter, sortKey]);
 
   const filtersActive = !!search || !!managerFilter || sortKey !== 'recent';
 
@@ -384,47 +371,41 @@ export default function ClientBook() {
       key: 'company',
       header: 'Company',
       width: 'flex',
-      maxWidth: 220,
+      maxWidth: 240,
       render: row => <CompanyCell row={row} />,
     },
     {
       key: 'contact',
       header: 'Contact',
-      width: 140,
-      maxWidth: 140,
+      width: 160,
+      maxWidth: 160,
       render: row => <PlainCell value={row.contact_name} />,
     },
     {
       key: 'email',
       header: 'Email',
       width: 'flex',
-      maxWidth: 220,
+      maxWidth: 240,
       render: row => <EmailCell row={row} />,
     },
     {
       key: 'sector',
       header: 'Sector',
-      width: 140,
-      maxWidth: 140,
+      width: 150,
+      maxWidth: 150,
       render: row => <PlainCell value={row.sector} />,
     },
     {
       key: 'region',
       header: 'Region',
-      width: 120,
-      maxWidth: 120,
+      width: 130,
+      maxWidth: 130,
       render: row => <PlainCell value={row.region} />,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      width: 140,
-      render: row => <StatusCell row={row} />,
     },
     {
       key: 'manager',
       header: 'Manager',
-      width: 90,
+      width: 100,
       render: row => <ManagerCell row={row} />,
     },
     {
@@ -447,7 +428,7 @@ export default function ClientBook() {
     <Tooltip.Provider delayDuration={300} skipDelayDuration={100}>
       <PageHeader
         title="Client Book"
-        description="Companies we work with and the ones we are chasing. Keep the contact, sector and manager up to date."
+        description="Companies we work with. Keep the contact, sector and manager up to date."
         actions={
           <Button variant="primary" icon={Plus} onClick={openAdd}>
             Add Client
@@ -458,37 +439,35 @@ export default function ClientBook() {
       <div className="kpi-row">
         <KPITile
           label="Total Clients"
-          value={loading ? 0 : stats.total}
+          value={loading ? 0 : kpis.totalClients}
           icon={Building2}
           tone="brand"
           loading={loading}
         />
         <KPITile
-          label="Active Clients"
-          value={loading ? 0 : stats.active_client}
-          icon={CheckCircle2}
+          label="With Live Tender"
+          value={loading ? 0 : kpis.liveTenderClients}
+          icon={Send}
+          tone="info"
+          loading={loading}
+        />
+        <KPITile
+          label="Won For"
+          value={loading ? 0 : kpis.wonForClients}
+          icon={Trophy}
           tone="success"
           loading={loading}
         />
         <KPITile
-          label="Prospects"
-          value={loading ? 0 : stats.prospect}
-          icon={Users}
+          label="New (30d)"
+          value={loading ? 0 : kpis.newIn30d}
+          icon={UserPlus}
           tone="neutral"
-          loading={loading}
-        />
-        <KPITile
-          label="Seeking Tender"
-          value={loading ? 0 : stats.seeking_tender}
-          icon={Target}
-          tone="info"
           loading={loading}
         />
       </div>
 
-      <StageTabs tabs={tabsWithCount} activeKey={stage} onChange={setStage} />
-
-      <FilterBar variant="attached">
+      <FilterBar>
         <FilterBar.Search
           value={search}
           onChange={setSearch}
@@ -521,7 +500,6 @@ export default function ClientBook() {
         columns={columns}
         data={filtered}
         rowKey={r => String(r.id)}
-        variant="attached"
         ariaLabel="Client book"
         isLoading={loading}
         isError={loadError}

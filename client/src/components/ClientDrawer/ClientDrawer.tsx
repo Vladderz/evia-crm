@@ -29,6 +29,12 @@ interface ClientDrawerProps {
   onSave: (values: ClientFormValues) => Promise<void> | void;
 }
 
+/* Status is retired from the UI (all clients are Active Client and the
+ * concept was doing no work on Client Book). The field is kept on the
+ * form values and defaulted to 'active_client' so POST /clients writes
+ * that value on create; the column and CHECK constraint remain intact
+ * on the server. Edit mode preserves the existing status via the
+ * `initial` prop rather than rewriting historical rows. */
 const EMPTY: ClientFormValues = {
   company_name: '',
   contact_name: '',
@@ -37,16 +43,10 @@ const EMPTY: ClientFormValues = {
   website: '',
   sector: '',
   region: '',
-  status: 'prospect',
+  status: 'active_client',
   account_manager: 'vlad',
   notes: '',
 };
-
-const STATUS_OPTIONS = [
-  { value: 'prospect',       label: 'Prospect' },
-  { value: 'active_client',  label: 'Active Client' },
-  { value: 'seeking_tender', label: 'Seeking Tender' },
-];
 
 const MANAGER_OPTIONS = [
   { value: 'vlad',    label: 'Vlad' },
@@ -162,13 +162,6 @@ export function ClientDrawer({ open, onClose, initial, onSave }: ClientDrawerPro
             onChange={e => update('region', e.target.value)}
           />
         </div>
-
-        <Select
-          label="Status"
-          value={form.status}
-          onValueChange={v => update('status', v as ClientStatus)}
-          options={STATUS_OPTIONS}
-        />
 
         <Select
           label="Account manager"
