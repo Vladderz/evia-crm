@@ -3,7 +3,6 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   Building2,
   CheckCircle2,
-  MessageCircle,
   Pencil,
   Plus,
   StickyNote,
