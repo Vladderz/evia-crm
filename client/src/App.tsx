@@ -8,6 +8,7 @@ import ActiveTenders from './pages/ActiveTenders'
 import ClientBook from './pages/ClientBook'
 import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
+import Scoreboard from './pages/Scoreboard'
 import NoMansLand from './pages/NoMansLand'
 import Playground from './pages/Playground'
 
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="clients" element={<ClientBook />} />
             <Route path="pipeline" element={<SalesPipeline />} />
             <Route path="prospected" element={<ContractsProspected />} />
+            <Route path="scoreboard" element={<Scoreboard />} />
             <Route path="no-mans-land" element={<NoMansLand />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
