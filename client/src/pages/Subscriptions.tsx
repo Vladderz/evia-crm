@@ -459,6 +459,15 @@ export default function Subscriptions() {
 
   /* ------------- Render ------------- */
 
+  /* The Link column is hidden until at least one visible row has a
+   * management_url, at which point it appears and Service gives back
+   * the 9% width it borrowed. Computed from the current filter so a
+   * saved URL surfaces the column immediately. */
+  const showLinkColumn = useMemo(
+    () => filtered.some(r => !!r.management_url && r.management_url.trim() !== ''),
+    [filtered],
+  );
+
   /* Percentage widths + table-layout: fixed keep the columns evenly
    * distributed across the full container width regardless of what
    * lands in each cell. */
@@ -466,13 +475,14 @@ export default function Subscriptions() {
     {
       key: 'service',
       header: 'Service',
-      width: '45%',
+      width: showLinkColumn ? '32%' : '38%',
+      align: 'left',
       render: row => <ServiceCell row={row} />,
     },
     {
       key: 'cost',
       header: 'Cost',
-      width: '12%',
+      width: '15%',
       align: 'right',
       mono: true,
       render: row => <CostCell row={row} />,
@@ -480,22 +490,24 @@ export default function Subscriptions() {
     {
       key: 'renewal',
       header: 'Next Renewal',
-      width: '18%',
+      width: '22%',
       align: 'right',
       mono: true,
       render: row => <RenewalCell row={row} />,
     },
-    {
-      key: 'link',
-      header: 'Link',
-      width: '8%',
-      align: 'center',
-      render: row => <LinkCell row={row} />,
-    },
+    ...(showLinkColumn
+      ? [{
+          key: 'link',
+          header: 'Link',
+          width: '9%',
+          align: 'center' as const,
+          render: (row: Subscription) => <LinkCell row={row} />,
+        }]
+      : []),
     {
       key: 'actions',
       header: '',
-      width: '17%',
+      width: '22%',
       align: 'right',
       render: row => (
         <ActionsCell row={row} onEdit={openEdit} onDelete={setDeleteTarget} />

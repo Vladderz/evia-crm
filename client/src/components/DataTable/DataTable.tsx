@@ -145,6 +145,21 @@ function colElementWidth<T>(col: Column<T>): string | undefined {
   return typeof col.width === 'number' ? `${col.width}px` : col.width;
 }
 
+/* Header + cell share exactly the same align mapping so a column
+ * can't drift out of alignment with itself. Callers only set
+ * col.align once. */
+function alignTextStyle(align?: 'left' | 'right' | 'center'): CSSProperties {
+  if (align === 'right') return { textAlign: 'right' };
+  if (align === 'center') return { textAlign: 'center' };
+  return { textAlign: 'left' };
+}
+
+function alignJustifyStyle(align?: 'left' | 'right' | 'center'): CSSProperties {
+  if (align === 'right') return { justifyContent: 'flex-end' };
+  if (align === 'center') return { justifyContent: 'center' };
+  return { justifyContent: 'flex-start' };
+}
+
 function alignClass(align?: 'left' | 'right' | 'center'): string {
   if (align === 'right') return 'dt-align-right';
   if (align === 'center') return 'dt-align-center';
@@ -220,7 +235,7 @@ export function DataTable<T>({
             <th
               key={col.key}
               className={`dt-th ${alignClass(col.align)}${col.sortable ? ' dt-th-sortable' : ''}`}
-              style={colWidthStyle(col)}
+              style={{ ...colWidthStyle(col), ...alignTextStyle(col.align) }}
               aria-sort={
                 isSorted
                   ? sortState!.direction === 'asc'
@@ -232,7 +247,7 @@ export function DataTable<T>({
               }
               onClick={col.sortable ? () => handleHeaderClick(col) : undefined}
             >
-              <span className="dt-th-inner">
+              <span className="dt-th-inner" style={alignJustifyStyle(col.align)}>
                 {col.header}
                 {SortIcon && <SortIcon size={12} aria-hidden />}
               </span>
@@ -335,7 +350,7 @@ export function DataTable<T>({
                     <td
                       key={col.key}
                       className={cellClasses}
-                      style={colWidthStyle(col)}
+                      style={{ ...colWidthStyle(col), ...alignTextStyle(col.align) }}
                     >
                       {col.maxWidth != null ? (
                         <div
