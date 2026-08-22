@@ -162,11 +162,28 @@ function BrandIcon({ serviceName }: { serviceName: string }) {
  * Cell renderers
  * ----------------------------------------------------------------- */
 
+/* All three stacked cells set align-items explicitly. text-align on
+ * the td does not reach flex children, so any cell that wraps content
+ * in a flex container has to pin its own cross-axis alignment to
+ * match the column. Service, Cost and Renewal are all left-aligned
+ * columns, so all three pin to flex-start. */
+
 function ServiceCell({ row }: { row: Subscription }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        gap: 10,
+        minWidth: 0,
+      }}
+    >
       <BrandIcon serviceName={row.service_name} />
-      <div className="dt-cell-2line" style={{ minWidth: 0 }}>
+      <div
+        className="dt-cell-2line"
+        style={{ alignItems: 'flex-start', minWidth: 0 }}
+      >
         <span className="dt-cell-primary">
           <TruncatedText>{row.service_name}</TruncatedText>
         </span>
@@ -181,7 +198,7 @@ function ServiceCell({ row }: { row: Subscription }) {
 function CostCell({ row }: { row: Subscription }) {
   const cycleLabel = cycleBadgeLabel(row.billing_cycle);
   return (
-    <div className="dt-cell-2line" style={{ alignItems: 'flex-end' }}>
+    <div className="dt-cell-2line" style={{ alignItems: 'flex-start' }}>
       <span>{formatGbp(row.amount)}</span>
       {cycleLabel && (
         <span
@@ -208,7 +225,14 @@ function RenewalCell({ row }: { row: Subscription }) {
   const dateText = formatRenewalDate(row.next_renewal_date);
   const rel = relativeLabel(row.next_renewal_date);
   return (
-    <div className="dt-date-2line">
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 2,
+      }}
+    >
       {urgent ? (
         <Badge variant="warning" size="sm">{dateText}</Badge>
       ) : (
@@ -468,30 +492,31 @@ export default function Subscriptions() {
     [filtered],
   );
 
-  /* Percentage widths + table-layout: fixed keep the columns evenly
-   * distributed across the full container width regardless of what
-   * lands in each cell. */
+  /* Widths pack Service / Cost / Renewal together on the left and let
+   * Actions hold the right edge. Cost and Renewal are left-aligned so
+   * their values sit next to Service instead of drifting to the right
+   * of an empty gap. Both configurations sum to exactly 100%. */
   const columns: Column<Subscription>[] = [
     {
       key: 'service',
       header: 'Service',
-      width: showLinkColumn ? '32%' : '38%',
+      width: showLinkColumn ? '26%' : '28%',
       align: 'left',
       render: row => <ServiceCell row={row} />,
     },
     {
       key: 'cost',
       header: 'Cost',
-      width: '15%',
-      align: 'right',
+      width: '12%',
+      align: 'left',
       mono: true,
       render: row => <CostCell row={row} />,
     },
     {
       key: 'renewal',
       header: 'Next Renewal',
-      width: '22%',
-      align: 'right',
+      width: '20%',
+      align: 'left',
       mono: true,
       render: row => <RenewalCell row={row} />,
     },
@@ -499,15 +524,15 @@ export default function Subscriptions() {
       ? [{
           key: 'link',
           header: 'Link',
-          width: '9%',
-          align: 'center' as const,
+          width: '8%',
+          align: 'left' as const,
           render: (row: Subscription) => <LinkCell row={row} />,
         }]
       : []),
     {
       key: 'actions',
       header: '',
-      width: '22%',
+      width: showLinkColumn ? '34%' : '40%',
       align: 'right',
       render: row => (
         <ActionsCell row={row} onEdit={openEdit} onDelete={setDeleteTarget} />
