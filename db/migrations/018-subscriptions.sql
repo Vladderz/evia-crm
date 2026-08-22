@@ -2,7 +2,7 @@
 -- Applied directly on Railway; this file is kept for the record.
 -- Filed as 018 because 017 is already taken by add-waiting-room-stage.
 
-CREATE TABLE subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
   id                  SERIAL PRIMARY KEY,
   service_name        TEXT NOT NULL,
   owner               TEXT NOT NULL CHECK (owner IN ('evia_consultancy','vlad','tristan')),
