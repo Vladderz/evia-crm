@@ -134,6 +134,33 @@ export type DropReason =
   | 'timing'
   | 'other'
 
+export type SubscriptionOwner = 'evia_consultancy' | 'vlad' | 'tristan'
+export type SubscriptionCycle = 'monthly' | 'quarterly' | 'annual'
+export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
+export type SubscriptionCategory = 'AI Tools' | 'Infrastructure' | 'Productivity' | 'Other'
+
+export interface Subscription {
+  id: number
+  service_name: string
+  owner: SubscriptionOwner
+  category: SubscriptionCategory | null
+  amount: number
+  billing_cycle: SubscriptionCycle
+  /** yyyy-mm-dd - selected as TEXT server-side to preserve the calendar day. */
+  renewal_anchor_date: string
+  payment_method: string
+  management_url: string | null
+  account_email: string | null
+  status: SubscriptionStatus
+  notes: string | null
+  created_at: string
+  updated_at: string
+  /** yyyy-mm-dd - computed server-side on every GET from the anchor + cycle. */
+  next_renewal_date: string
+  /** Amount normalised to a per-month figure for KPI totals. */
+  monthly_equivalent: number
+}
+
 export interface Tender {
   id: number
   client_id: number | null

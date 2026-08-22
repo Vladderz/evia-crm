@@ -10,6 +10,7 @@ import SalesPipeline from './pages/SalesPipeline'
 import ContractsProspected from './pages/ContractsProspected'
 import Scoreboard from './pages/Scoreboard'
 import NoMansLand from './pages/NoMansLand'
+import Subscriptions from './pages/Subscriptions'
 import Playground from './pages/Playground'
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="prospected" element={<ContractsProspected />} />
             <Route path="scoreboard" element={<Scoreboard />} />
             <Route path="no-mans-land" element={<NoMansLand />} />
+            <Route path="subscriptions" element={<Subscriptions />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

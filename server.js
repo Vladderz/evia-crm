@@ -14,6 +14,7 @@ const tenderResultsRoutes = require('./routes/tenderResults');
 const activityRoutes = require('./routes/activity');
 const pipelineRoutes = require('./routes/pipeline');
 const noMansLandRoutes = require('./routes/no-mans-land');
+const subscriptionsRoutes = require('./routes/subscriptions');
 const requireAuth = require('./middleware/requireAuth');
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/activity', requireAuth, activityRoutes);
 app.use('/api/prospected', requireAuth, require('./routes/prospected'));
 app.use('/api/pipeline', requireAuth, pipelineRoutes);
 app.use('/api/no-mans-land', requireAuth, noMansLandRoutes);
+app.use('/api/subscriptions', requireAuth, subscriptionsRoutes);
 
 if (isProd) {
   const distPath = path.join(__dirname, 'client', 'dist');
