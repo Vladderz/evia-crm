@@ -18,8 +18,12 @@ import { Button } from '../Button/Button';
 export interface Column<T> {
   key: string;
   header: string;
-  /** Pixel width or "flex" to absorb remaining space. */
-  width?: number | 'flex';
+  /**
+   * Pixel width, a CSS length string (e.g. "45%"), or "flex" to absorb
+   * remaining space. String widths are only honoured when the parent
+   * DataTable is set to layout="fixed".
+   */
+  width?: number | string | 'flex';
   /** Hard cap on cell content width (used for truncation). */
   maxWidth?: number;
   align?: 'left' | 'right' | 'center';
@@ -68,6 +72,13 @@ export interface DataTableProps<T> {
    * round, no top border. "standalone" is the default rounded card.
    */
   variant?: 'standalone' | 'attached';
+  /**
+   * "fixed" applies table-layout: fixed and emits a <colgroup> derived
+   * from column widths. Use this when you want columns to distribute
+   * evenly across the container using percentage widths. Default is
+   * "auto", which preserves the historic pixel-width behaviour.
+   */
+  layout?: 'auto' | 'fixed';
 }
 
 /* -----------------------------------------------------------------
@@ -129,6 +140,11 @@ function colWidthStyle<T>(col: Column<T>): CSSProperties {
   return { width: col.width };
 }
 
+function colElementWidth<T>(col: Column<T>): string | undefined {
+  if (col.width === 'flex' || col.width == null) return undefined;
+  return typeof col.width === 'number' ? `${col.width}px` : col.width;
+}
+
 function alignClass(align?: 'left' | 'right' | 'center'): string {
   if (align === 'right') return 'dt-align-right';
   if (align === 'center') return 'dt-align-center';
@@ -152,6 +168,7 @@ export function DataTable<T>({
   onSortChange,
   ariaLabel,
   variant = 'standalone',
+  layout = 'auto',
 }: DataTableProps<T>) {
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
@@ -392,7 +409,19 @@ export function DataTable<T>({
     <Tooltip.Provider delayDuration={300} skipDelayDuration={100}>
       <div className={containerClass}>
         <div className="dt-scroll">
-          <table className="dt-table" role="table" aria-label={ariaLabel}>
+          <table
+            className="dt-table"
+            role="table"
+            aria-label={ariaLabel}
+            style={layout === 'fixed' ? { tableLayout: 'fixed' } : undefined}
+          >
+            {layout === 'fixed' && (
+              <colgroup>
+                {columns.map(col => (
+                  <col key={col.key} style={{ width: colElementWidth(col) }} />
+                ))}
+              </colgroup>
+            )}
             {header}
             {body}
           </table>

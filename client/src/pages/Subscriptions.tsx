@@ -9,6 +9,12 @@ import {
   User,
   Wallet,
 } from 'lucide-react';
+import {
+  siAnthropic,
+  siGithub,
+  siGoogle,
+  siRailway,
+} from 'simple-icons';
 import api from '../lib/api';
 import type {
   Subscription,
@@ -96,18 +102,78 @@ function cycleBadgeLabel(cycle: Subscription['billing_cycle']): string | null {
 }
 
 /* -----------------------------------------------------------------
+ * Brand icon lookup
+ * -----------------------------------------------------------------
+ * simple-icons exports each brand as { title, hex, path }. We render
+ * the path as an inline 16px SVG tinted with the brand hex. Match is
+ * case-insensitive on service_name so the lookup survives renames
+ * and the two Google Workspace variants ('Google Workspace - Evia' /
+ * '- Vlad' etc).
+ *
+ * Each entry is looked up defensively: if a future simple-icons
+ * release drops one of these exports the import lands as undefined
+ * and we quietly fall back to the letter tile rather than crashing
+ * the whole table.
+ */
+type SimpleIcon = { title: string; hex: string; path: string };
+type BrandEntry = { match: string; icon: SimpleIcon | undefined };
+
+const BRAND_ENTRIES: BrandEntry[] = [
+  { match: 'google workspace', icon: siGoogle    as SimpleIcon | undefined },
+  { match: 'github',           icon: siGithub    as SimpleIcon | undefined },
+  { match: 'railway',          icon: siRailway   as SimpleIcon | undefined },
+  { match: 'claude',           icon: siAnthropic as SimpleIcon | undefined },
+];
+
+function findBrandIcon(serviceName: string): SimpleIcon | null {
+  const q = serviceName.toLowerCase();
+  for (const entry of BRAND_ENTRIES) {
+    if (entry.icon && q.includes(entry.match)) return entry.icon;
+  }
+  return null;
+}
+
+function BrandIcon({ serviceName }: { serviceName: string }) {
+  const icon = findBrandIcon(serviceName);
+  if (icon) {
+    return (
+      <svg
+        role="img"
+        aria-hidden="true"
+        width={16}
+        height={16}
+        viewBox="0 0 24 24"
+        style={{ flexShrink: 0, display: 'block' }}
+        fill={`#${icon.hex}`}
+      >
+        <path d={icon.path} />
+      </svg>
+    );
+  }
+  const letter = (serviceName.trim().charAt(0) || '?').toUpperCase();
+  return (
+    <span className="brand-icon-fallback" aria-hidden="true">
+      {letter}
+    </span>
+  );
+}
+
+/* -----------------------------------------------------------------
  * Cell renderers
  * ----------------------------------------------------------------- */
 
 function ServiceCell({ row }: { row: Subscription }) {
   return (
-    <div className="dt-cell-2line">
-      <span className="dt-cell-primary">
-        <TruncatedText>{row.service_name}</TruncatedText>
-      </span>
-      {row.account_email && (
-        <span className="dt-cell-secondary">{row.account_email}</span>
-      )}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <BrandIcon serviceName={row.service_name} />
+      <div className="dt-cell-2line" style={{ minWidth: 0 }}>
+        <span className="dt-cell-primary">
+          <TruncatedText>{row.service_name}</TruncatedText>
+        </span>
+        {row.account_email && (
+          <span className="dt-cell-secondary">{row.account_email}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -188,9 +254,14 @@ function ActionsCell({
       <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
         Edit
       </Button>
-      <Button variant="danger" size="sm" icon={Trash2} onClick={() => onDelete(row)}>
-        Delete
-      </Button>
+      <button
+        type="button"
+        className="dt-icon-danger"
+        aria-label="Delete subscription"
+        onClick={() => onDelete(row)}
+      >
+        <Trash2 size={14} aria-hidden />
+      </button>
     </span>
   );
 }
@@ -388,18 +459,20 @@ export default function Subscriptions() {
 
   /* ------------- Render ------------- */
 
+  /* Percentage widths + table-layout: fixed keep the columns evenly
+   * distributed across the full container width regardless of what
+   * lands in each cell. */
   const columns: Column<Subscription>[] = [
     {
       key: 'service',
       header: 'Service',
-      width: 'flex',
-      maxWidth: 320,
+      width: '45%',
       render: row => <ServiceCell row={row} />,
     },
     {
       key: 'cost',
       header: 'Cost',
-      width: 180,
+      width: '12%',
       align: 'right',
       mono: true,
       render: row => <CostCell row={row} />,
@@ -407,7 +480,7 @@ export default function Subscriptions() {
     {
       key: 'renewal',
       header: 'Next Renewal',
-      width: 160,
+      width: '18%',
       align: 'right',
       mono: true,
       render: row => <RenewalCell row={row} />,
@@ -415,14 +488,14 @@ export default function Subscriptions() {
     {
       key: 'link',
       header: 'Link',
-      width: 60,
+      width: '8%',
       align: 'center',
       render: row => <LinkCell row={row} />,
     },
     {
       key: 'actions',
       header: '',
-      width: 180,
+      width: '17%',
       align: 'right',
       render: row => (
         <ActionsCell row={row} onEdit={openEdit} onDelete={setDeleteTarget} />
@@ -505,6 +578,7 @@ export default function Subscriptions() {
           data={[]}
           rowKey={r => String(r.id)}
           ariaLabel="Subscriptions"
+          layout="fixed"
           isLoading={loading}
           isError={loadError}
           errorMessage="Couldn't load subscriptions"
@@ -520,43 +594,36 @@ export default function Subscriptions() {
               <section key={owner}>
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    justifyContent: 'space-between',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
                     padding: '0 4px 8px',
-                    gap: 12,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--text-primary-v1)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
                   }}
                 >
-                  <div
+                  <CalendarClock size={14} aria-hidden />
+                  <span>{OWNER_LABEL[owner]}</span>
+                  <span
                     style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: 'var(--text-primary-v1)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    <CalendarClock size={14} aria-hidden />
-                    {OWNER_LABEL[owner]}
-                  </div>
-                  <div
-                    className="dt-mono"
-                    style={{
-                      fontSize: 13,
+                      fontWeight: 500,
                       color: 'var(--text-secondary-v1)',
+                      textTransform: 'none',
+                      letterSpacing: 0,
                     }}
                   >
-                    {formatGbp(groupSubtotals[owner])}/month
-                  </div>
+                    ({formatGbp(groupSubtotals[owner])}/month)
+                  </span>
                 </div>
                 <DataTable<Subscription>
                   columns={columns}
                   data={groupRows}
                   rowKey={r => String(r.id)}
                   ariaLabel={`${OWNER_LABEL[owner]} subscriptions`}
+                  layout="fixed"
                 />
               </section>
             );
