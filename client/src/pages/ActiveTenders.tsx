@@ -77,9 +77,11 @@ const STATUS_HAS_DOT: Record<string, boolean> = {
 
 const STAGE_TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
-  ...TENDER_STATUS_OPTIONS
-    .filter(o => o.value !== 'archived')
-    .map(o => ({ key: o.value, label: o.label })),
+  ...TENDER_STATUS_OPTIONS.map(o => ({ key: o.value, label: o.label })),
+  // Recovery route for legacy rows the old auto-archive job stranded.
+  // Nothing new lands here now, but the tab must exist so those rows
+  // are reachable. Excluded from All and from all KPI totals.
+  { key: 'archived', label: 'Archived' },
 ];
 
 /* -----------------------------------------------------------------
@@ -163,6 +165,9 @@ function StatusCell({ row }: { row: Tender }) {
     (row.status === 'writing' || row.status === 'questionnaire_sent') &&
     row.awaiting_info === true;
   const awaitingTooltip = row.awaiting_info_note?.trim() || 'Chasing client for info';
+  // is_stale is server-computed and only ever true for status==='submitted'.
+  // Row stays where it is; the badge is the whole surfacing mechanism.
+  const showChase = row.status === 'submitted' && row.is_stale === true;
   return (
     <div className="status-stack">
       <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
@@ -171,6 +176,11 @@ function StatusCell({ row }: { row: Tender }) {
       {showAwaiting && (
         <span title={awaitingTooltip}>
           <Badge variant="warning" withDot>Chasing</Badge>
+        </span>
+      )}
+      {showChase && (
+        <span title="Submitted more than 90 days ago with no result recorded - chase the buyer">
+          <Badge variant="warning" withDot>Chase</Badge>
         </span>
       )}
     </div>
@@ -425,6 +435,10 @@ export default function ActiveTenders() {
   const toast = useToast();
 
   const [tenders, setTenders] = useState<Tender[]>([]);
+  // Fetched separately from /tenders?view=archived. The default list
+  // deliberately excludes archived, so KPI totals derived from `tenders`
+  // stay accurate. Only the Archived tab reads this array.
+  const [archivedTenders, setArchivedTenders] = useState<Tender[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -461,11 +475,13 @@ export default function ActiveTenders() {
   const fetchData = useCallback(async () => {
     setLoadError(false);
     try {
-      const [tendersRes, clientsRes] = await Promise.all([
+      const [tendersRes, clientsRes, archivedRes] = await Promise.all([
         api.get('/tenders'),
         api.get('/clients'),
+        api.get('/tenders?view=archived'),
       ]);
       setTenders(tendersRes.data);
+      setArchivedTenders(archivedRes.data);
       setClients(
         (clientsRes.data as Client[]).sort((a, b) =>
           a.company_name.localeCompare(b.company_name),
@@ -490,6 +506,7 @@ export default function ActiveTenders() {
       submitted: 0,
       won: 0,
       lost: 0,
+      archived: archivedTenders.length,
     };
     for (const t of tenders) {
       c[t.status] = (c[t.status] ?? 0) + 1;
@@ -498,7 +515,7 @@ export default function ActiveTenders() {
       }
     }
     return c;
-  }, [tenders]);
+  }, [tenders, archivedTenders]);
 
   const stats = useMemo(() => {
     const won = tenders.filter(t => t.status === 'won');
@@ -555,11 +572,16 @@ export default function ActiveTenders() {
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
-    return tenders.filter(t => {
+    // Archived rows are fetched separately and never mixed into `tenders`,
+    // so KPI totals and the All tab don't need extra guards for them.
+    const source = stage === 'archived' ? archivedTenders : tenders;
+    return source.filter(t => {
       if (stage === 'all') {
         if (t.status === 'won' || t.status === 'lost' || t.status === 'archived') {
           return false;
         }
+      } else if (stage === 'archived') {
+        // source is already status='archived' server-side; no extra check.
       } else if (t.status !== stage) {
         return false;
       }
@@ -570,7 +592,7 @@ export default function ActiveTenders() {
       }
       return true;
     });
-  }, [tenders, stage, debouncedSearch, assigned]);
+  }, [tenders, archivedTenders, stage, debouncedSearch, assigned]);
 
   const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
 

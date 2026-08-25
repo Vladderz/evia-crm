@@ -154,13 +154,16 @@ export const TENDER_STATUS_LABELS_LONG: Record<string, string> = {
   archived: 'Archived',
 };
 
+// 'archived' is intentionally absent: it is not a user-selectable stage.
+// Historical rows still exist and are surfaced in the Archived tab so
+// they can be reclassified. TENDER_STATUS_LABELS keeps 'archived' so
+// those rows render their status text correctly.
 export const TENDER_STATUS_OPTIONS = [
   { value: 'questionnaire_sent', label: TENDER_STATUS_LABELS.questionnaire_sent! },
   { value: 'writing',            label: TENDER_STATUS_LABELS.writing! },
   { value: 'submitted',          label: TENDER_STATUS_LABELS.submitted! },
   { value: 'won',                label: TENDER_STATUS_LABELS.won! },
   { value: 'lost',               label: TENDER_STATUS_LABELS.lost! },
-  { value: 'archived',           label: TENDER_STATUS_LABELS.archived! },
 ];
 
 export function getStatusLabel(status: string | null | undefined): string {

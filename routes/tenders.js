@@ -28,27 +28,6 @@ const DROP_REASON_LABELS = {
   other:           'Other',
 };
 
-async function runAutoArchive(userId) {
-  try {
-    const result = await pool.query(
-      `UPDATE tenders
-       SET status = 'archived'
-       WHERE status = 'submitted'
-         AND submission_deadline < NOW() - INTERVAL '90 days'
-         AND dropped_at IS NULL
-       RETURNING id, title`
-    );
-    for (const row of result.rows) {
-      await logActivity(userId, 'auto-archived tender', 'tender', row.id, {
-        title: row.title,
-        reason: '90 days past deadline with no result recorded',
-      });
-    }
-  } catch (err) {
-    console.error('Auto-archive error:', err);
-  }
-}
-
 // GET /api/tenders/stats - registered before /:id to avoid route conflict
 router.get('/stats', async (req, res) => {
   try {
@@ -258,8 +237,6 @@ router.post('/:id/re-engage', async (req, res) => {
 router.get('/', async (req, res) => {
   const { view } = req.query;
   try {
-    await runAutoArchive(req.session.userId);
-
     let query;
     const latestNoteJoin = `
       LEFT JOIN LATERAL (
@@ -275,12 +252,21 @@ router.get('/', async (req, res) => {
       latest_note.created_at AS latest_note_date,
       latest_note.note_type AS latest_note_type
     `;
+    // Computed on read only. Never persisted. Never used to filter rows.
+    // Replaces the old runAutoArchive job that silently flipped submitted
+    // rows to 'archived' after 90 days.
+    const staleSelect = `
+      (t.status = 'submitted'
+        AND t.submission_deadline < NOW() - INTERVAL '90 days'
+        AND t.dropped_at IS NULL) AS is_stale
+    `;
 
     if (view === 'live') {
       query = `
         SELECT t.*, c.company_name AS client_name, c.website AS client_website,
           u.name AS created_by_name,
-          ${noteSelect}
+          ${noteSelect},
+          ${staleSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
@@ -293,7 +279,8 @@ router.get('/', async (req, res) => {
       query = `
         SELECT t.*, c.company_name AS client_name, c.website AS client_website,
           u.name AS created_by_name,
-          ${noteSelect}
+          ${noteSelect},
+          ${staleSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
@@ -302,11 +289,26 @@ router.get('/', async (req, res) => {
           AND t.dropped_at IS NULL
         ORDER BY t.updated_at DESC
       `;
+    } else if (view === 'archived') {
+      query = `
+        SELECT t.*, c.company_name AS client_name, c.website AS client_website,
+          u.name AS created_by_name,
+          ${noteSelect},
+          ${staleSelect}
+        FROM tenders t
+        LEFT JOIN clients c ON t.client_id = c.id
+        LEFT JOIN users u ON t.created_by = u.id
+        ${latestNoteJoin}
+        WHERE t.status = 'archived'
+          AND t.dropped_at IS NULL
+        ORDER BY t.updated_at DESC
+      `;
     } else {
       query = `
         SELECT t.*, c.company_name AS client_name, c.website AS client_website,
           u.name AS created_by_name,
-          ${noteSelect}
+          ${noteSelect},
+          ${staleSelect}
         FROM tenders t
         LEFT JOIN clients c ON t.client_id = c.id
         LEFT JOIN users u ON t.created_by = u.id

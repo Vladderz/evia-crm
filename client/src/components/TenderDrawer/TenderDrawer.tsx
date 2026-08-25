@@ -294,7 +294,16 @@ export function TenderDrawer({
           label="Status"
           value={form.status}
           onValueChange={handleStatusChange}
-          options={TENDER_STATUS_OPTIONS}
+          options={
+            // 'archived' is not a selectable stage. If the row is
+            // already archived (four legacy rows exist from the old
+            // auto-archive job), expose it once so the drawer can
+            // display and reclassify it - after picking any other
+            // value the option drops back out.
+            form.status === 'archived'
+              ? [...TENDER_STATUS_OPTIONS, { value: 'archived', label: 'Archived' }]
+              : TENDER_STATUS_OPTIONS
+          }
         />
 
         <div

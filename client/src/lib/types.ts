@@ -203,4 +203,10 @@ export interface Tender {
   latest_note_text?: string | null
   latest_note_date?: string | null
   latest_note_type?: string | null
+  /**
+   * Server-computed on every read (never persisted). True when a
+   * submitted tender's deadline is more than 90 days old and the row
+   * is not dropped - surfaces as a "Chase" badge without moving the row.
+   */
+  is_stale?: boolean | null
 }
