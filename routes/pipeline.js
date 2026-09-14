@@ -189,21 +189,61 @@ router.get('/', async (req, res) => {
 // POST /api/pipeline
 router.post('/', async (req, res) => {
   const {
+    client_id,
     company_name, contact_name, email, phone, website, sector, region,
     tender_url, tender_title, tender_reference, tender_value,
     submission_deadline, award_date, buyer,
     status, assigned_to, last_contact_date, next_followup_date,
   } = req.body;
 
-  if (!company_name || !String(company_name).trim()) {
-    return res.status(400).json({ error: 'company_name is required' });
-  }
-
   // Convert empty strings to null for dates and numerics
   const safeDate = (v) => (v && String(v).trim()) ? v : null;
   const safeNum = (v) => (v !== null && v !== undefined && String(v).trim() !== '') ? v : null;
 
   try {
+    // When a client is picked, the seven company fields are sourced
+    // from the clients row so they cannot diverge from Client Book,
+    // regardless of what the browser sent.
+    let clientIdVal = null;
+    let companyFields = {
+      company_name: company_name ? String(company_name).trim() : '',
+      contact_name: safeDate(contact_name),
+      email: safeDate(email),
+      phone: safeDate(phone),
+      website: safeDate(website),
+      sector: safeDate(sector),
+      region: safeDate(region),
+    };
+    if (client_id !== null && client_id !== undefined && client_id !== '') {
+      const cid = parseInt(client_id, 10);
+      if (!Number.isInteger(cid)) {
+        return res.status(400).json({ error: 'Invalid client_id' });
+      }
+      const clientRow = await pool.query(
+        `SELECT id, company_name, contact_name, email, phone, website, sector, region
+         FROM clients WHERE id = $1`,
+        [cid]
+      );
+      if (!clientRow.rows[0]) {
+        return res.status(400).json({ error: 'client_id does not match any client' });
+      }
+      clientIdVal = cid;
+      const c = clientRow.rows[0];
+      companyFields = {
+        company_name: c.company_name,
+        contact_name: c.contact_name,
+        email: c.email,
+        phone: c.phone,
+        website: c.website,
+        sector: c.sector,
+        region: c.region,
+      };
+    }
+
+    if (!companyFields.company_name) {
+      return res.status(400).json({ error: 'company_name is required' });
+    }
+
     // Duplicate tender_url check
     const tenderUrlVal = safeDate(tender_url);
     if (tenderUrlVal) {
@@ -220,23 +260,24 @@ router.post('/', async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO sales_pipeline
-        (company_name, contact_name, email, phone, website, sector, region,
+        (client_id, company_name, contact_name, email, phone, website, sector, region,
          tender_url, tender_title, tender_reference, tender_value,
          submission_deadline, award_date, buyer,
          status, assigned_to, last_contact_date, next_followup_date, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-         COALESCE($17, CURRENT_DATE),
-         COALESCE($18, CURRENT_DATE + INTERVAL '3 days'),
-         $19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+         COALESCE($18, CURRENT_DATE),
+         COALESCE($19, CURRENT_DATE + INTERVAL '3 days'),
+         $20)
        RETURNING *`,
       [
-        String(company_name).trim(),
-        safeDate(contact_name),
-        safeDate(email),
-        safeDate(phone),
-        safeDate(website),
-        safeDate(sector),
-        safeDate(region),
+        clientIdVal,
+        companyFields.company_name,
+        companyFields.contact_name,
+        companyFields.email,
+        companyFields.phone,
+        companyFields.website,
+        companyFields.sector,
+        companyFields.region,
         tenderUrlVal,
         safeDate(tender_title),
         safeDate(tender_reference),
@@ -338,54 +379,57 @@ router.post('/:id/promote', async (req, res) => {
       });
     }
 
-    // 2. Check if client already exists
+    // 2. Resolve the client. If the prospect was raised against an
+    //    existing Client Book profile (client_id set), use it directly
+    //    and never touch the clients table. Otherwise fall through to
+    //    the case-insensitive name lookup, and only insert when no
+    //    match exists.
     let clientId;
-    const existingClient = await client.query(
-      'SELECT id FROM clients WHERE LOWER(company_name) = LOWER($1)',
-      [prospect.company_name]
-    );
-    if (existingClient.rows.length > 0) {
-      clientId = existingClient.rows[0].id;
+    if (prospect.client_id) {
+      clientId = prospect.client_id;
     } else {
-      // 3. Create the client
-      const clientResult = await client.query(
-        `INSERT INTO clients
-          (company_name, contact_name, email, phone, website, sector, region, status, account_manager, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'active_client',$8,$9)
-         RETURNING id`,
-        [
-          prospect.company_name,
-          prospect.contact_name || null,
-          prospect.email || null,
-          prospect.phone || null,
-          prospect.website || null,
-          prospect.sector || null,
-          prospect.region || null,
-          prospect.assigned_to || null,
-          req.session.userId,
-        ]
+      const existingClient = await client.query(
+        'SELECT id FROM clients WHERE LOWER(company_name) = LOWER($1)',
+        [prospect.company_name]
       );
-      clientId = clientResult.rows[0].id;
+      if (existingClient.rows.length > 0) {
+        clientId = existingClient.rows[0].id;
+      } else {
+        const clientResult = await client.query(
+          `INSERT INTO clients
+            (company_name, contact_name, email, phone, website, sector, region, status, account_manager, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'active_client',$8,$9)
+           RETURNING id`,
+          [
+            prospect.company_name,
+            prospect.contact_name || null,
+            prospect.email || null,
+            prospect.phone || null,
+            prospect.website || null,
+            prospect.sector || null,
+            prospect.region || null,
+            prospect.assigned_to || null,
+            req.session.userId,
+          ]
+        );
+        clientId = clientResult.rows[0].id;
+      }
     }
 
-    // 4. Calculate evia_fee
-    const eviaFee = prospect.tender_value
-      ? Math.max(Number(prospect.tender_value) * 0.03, 2000)
-      : null;
-
-    // 5. Create the tender
+    // 4. Create the tender. evia_fee is left NULL: the Success Fee is
+    //    a fixed per-engagement amount entered manually on the tender
+    //    record, not a percentage of value.
     const tenderResult = await client.query(
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
          reference_number, tender_url, status, assigned_to, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'questionnaire_sent',$10,$11)
+       VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$8,'questionnaire_sent',$9,$10)
        RETURNING id`,
       [
         clientId,
         prospect.tender_title || 'Untitled Tender',
         prospect.buyer || null,
         prospect.tender_value || null,
-        eviaFee,
         prospect.submission_deadline || null,
         prospect.award_date || null,
         prospect.tender_reference || null,
@@ -607,6 +651,7 @@ router.put('/:id', async (req, res) => {
     const prev = current.rows[0];
 
     const {
+      client_id,
       company_name, contact_name, email, phone, website, sector, region,
       tender_url, tender_title, tender_reference, tender_value,
       submission_deadline, award_date, buyer,
@@ -616,23 +661,75 @@ router.put('/:id', async (req, res) => {
     const safeDate = (v) => (v && String(v).trim()) ? v : null;
     const safeNum = (v) => (v !== null && v !== undefined && String(v).trim() !== '') ? v : null;
 
+    // Resolve client_id: undefined = leave as-is (client sent no key);
+    // null / '' = clear; number = set. When set, the seven company
+    // fields are forced to the clients row.
+    let clientIdVal = prev.client_id;
+    let companyFields = {
+      company_name: company_name ? String(company_name).trim() : prev.company_name,
+      contact_name: safeDate(contact_name),
+      email: safeDate(email),
+      phone: safeDate(phone),
+      website: safeDate(website),
+      sector: safeDate(sector),
+      region: safeDate(region),
+    };
+    if (client_id === null || client_id === '') {
+      clientIdVal = null;
+    } else if (client_id !== undefined) {
+      const cid = parseInt(client_id, 10);
+      if (!Number.isInteger(cid)) {
+        return res.status(400).json({ error: 'Invalid client_id' });
+      }
+      const clientRow = await pool.query(
+        `SELECT id, company_name, contact_name, email, phone, website, sector, region
+         FROM clients WHERE id = $1`,
+        [cid]
+      );
+      if (!clientRow.rows[0]) {
+        return res.status(400).json({ error: 'client_id does not match any client' });
+      }
+      clientIdVal = cid;
+    }
+    if (clientIdVal !== null) {
+      const clientRow = await pool.query(
+        `SELECT company_name, contact_name, email, phone, website, sector, region
+         FROM clients WHERE id = $1`,
+        [clientIdVal]
+      );
+      if (clientRow.rows[0]) {
+        const c = clientRow.rows[0];
+        companyFields = {
+          company_name: c.company_name,
+          contact_name: c.contact_name,
+          email: c.email,
+          phone: c.phone,
+          website: c.website,
+          sector: c.sector,
+          region: c.region,
+        };
+      }
+    }
+
     const result = await pool.query(
       `UPDATE sales_pipeline SET
-        company_name = $1, contact_name = $2, email = $3, phone = $4, website = $5,
-        sector = $6, region = $7, tender_url = $8, tender_title = $9, tender_reference = $10,
-        tender_value = $11, submission_deadline = $12, award_date = $13, buyer = $14,
-        status = $15, assigned_to = $16, last_contact_date = $17, next_followup_date = $18,
+        client_id = $1,
+        company_name = $2, contact_name = $3, email = $4, phone = $5, website = $6,
+        sector = $7, region = $8, tender_url = $9, tender_title = $10, tender_reference = $11,
+        tender_value = $12, submission_deadline = $13, award_date = $14, buyer = $15,
+        status = $16, assigned_to = $17, last_contact_date = $18, next_followup_date = $19,
         updated_at = NOW()
-       WHERE id = $19
+       WHERE id = $20
        RETURNING *`,
       [
-        company_name ? String(company_name).trim() : prev.company_name,
-        safeDate(contact_name),
-        safeDate(email),
-        safeDate(phone),
-        safeDate(website),
-        safeDate(sector),
-        safeDate(region),
+        clientIdVal,
+        companyFields.company_name,
+        companyFields.contact_name,
+        companyFields.email,
+        companyFields.phone,
+        companyFields.website,
+        companyFields.sector,
+        companyFields.region,
         safeDate(tender_url),
         safeDate(tender_title),
         safeDate(tender_reference),

@@ -4,12 +4,14 @@ import { Input } from '../Input/Input';
 import { Textarea } from '../Textarea/Textarea';
 import { Select } from '../Select/Select';
 import { Button } from '../Button/Button';
+import { ClientPicker, type ClientOption } from '../shared/ClientPicker';
 import { PROSPECT_STATUS_OPTIONS } from '../../lib/format';
 import type { ProspectStatus } from '../../lib/types';
 
 export type { ProspectStatus };
 
 export interface ProspectFormValues {
+  client_id: string;
   company_name: string;
   contact_name: string;
   email: string;
@@ -35,11 +37,13 @@ interface ProspectDrawerProps {
   open: boolean;
   onClose: () => void;
   initial?: Partial<ProspectFormValues> | null;
+  clients?: ClientOption[];
   defaultAssignee?: string;
   onSave: (values: ProspectFormValues) => Promise<void> | void;
 }
 
 const EMPTY: ProspectFormValues = {
+  client_id: '',
   company_name: '',
   contact_name: '',
   email: '',
@@ -77,6 +81,7 @@ export function ProspectDrawer({
   open,
   onClose,
   initial,
+  clients = [],
   defaultAssignee = '',
   onSave,
 }: ProspectDrawerProps) {
@@ -98,6 +103,47 @@ export function ProspectDrawer({
   function update<K extends keyof ProspectFormValues>(key: K, value: ProspectFormValues[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
   }
+
+  // When a Client Book profile is picked, prefill the seven company
+  // fields from that record and render them read-only. Clearing the
+  // picker restores the fields to blank and re-enables editing so the
+  // drawer can raise a brand-new prospect again in the same session.
+  function handleClientPick(nextClientId: string) {
+    if (!nextClientId) {
+      setForm(prev => ({
+        ...prev,
+        client_id: '',
+        company_name: '',
+        contact_name: '',
+        email: '',
+        phone: '',
+        website: '',
+        sector: '',
+        region: '',
+      }));
+      setCompanyError(false);
+      return;
+    }
+    const picked = clients.find(c => String(c.id) === nextClientId);
+    if (!picked) {
+      update('client_id', nextClientId);
+      return;
+    }
+    setForm(prev => ({
+      ...prev,
+      client_id: nextClientId,
+      company_name: picked.name,
+      contact_name: picked.contact_name ?? '',
+      email: picked.email ?? '',
+      phone: picked.phone ?? '',
+      website: picked.website ?? '',
+      sector: picked.sector ?? '',
+      region: picked.region ?? '',
+    }));
+    setCompanyError(false);
+  }
+
+  const clientLocked = !!form.client_id;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -138,10 +184,18 @@ export function ProspectDrawer({
       footer={footer}
     >
       <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
+        <ClientPicker
+          label="Existing client (optional)"
+          clients={clients}
+          value={form.client_id}
+          onChange={handleClientPick}
+          emptyLabel="New prospect"
+        />
         <Input
           label="Company name"
           required
           value={form.company_name}
+          disabled={clientLocked}
           error={companyError ? 'Company name is required' : undefined}
           onChange={e => {
             update('company_name', e.target.value);
@@ -152,12 +206,14 @@ export function ProspectDrawer({
           <Input
             label="Contact name"
             value={form.contact_name}
+            disabled={clientLocked}
             onChange={e => update('contact_name', e.target.value)}
           />
           <Input
             label="Email"
             type="email"
             value={form.email}
+            disabled={clientLocked}
             onChange={e => update('email', e.target.value)}
           />
         </div>
@@ -165,12 +221,14 @@ export function ProspectDrawer({
           <Input
             label="Phone"
             value={form.phone}
+            disabled={clientLocked}
             onChange={e => update('phone', e.target.value)}
           />
           <Input
             label="Website"
             placeholder="https://..."
             value={form.website}
+            disabled={clientLocked}
             onChange={e => update('website', e.target.value)}
           />
         </div>
@@ -178,11 +236,13 @@ export function ProspectDrawer({
           <Input
             label="Sector"
             value={form.sector}
+            disabled={clientLocked}
             onChange={e => update('sector', e.target.value)}
           />
           <Input
             label="Region"
             value={form.region}
+            disabled={clientLocked}
             onChange={e => update('region', e.target.value)}
           />
         </div>

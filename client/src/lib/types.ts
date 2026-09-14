@@ -32,6 +32,7 @@ export interface ProspectedContract {
 
 export interface PipelineProspect {
   id: number;
+  client_id: number | null;
   company_name: string;
   contact_name: string | null;
   email: string | null;

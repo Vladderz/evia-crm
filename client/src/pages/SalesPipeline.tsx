@@ -13,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { PipelineProspect, DropReason } from '../lib/types';
+import type { PipelineProspect, DropReason, Client } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -85,6 +85,7 @@ const EMPTY_STATS: PipelineStats = {
 
 function prospectToForm(p: PipelineProspect): Partial<ProspectFormValues> {
   return {
+    client_id: p.client_id != null ? String(p.client_id) : '',
     company_name: p.company_name,
     contact_name: p.contact_name ?? '',
     email: p.email ?? '',
@@ -353,6 +354,7 @@ export default function SalesPipeline() {
   const toast = useToast();
 
   const [prospects, setProspects] = useState<PipelineProspect[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [stats, setStats] = useState<PipelineStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -383,18 +385,38 @@ export default function SalesPipeline() {
   const fetchData = useCallback(async () => {
     setLoadError(false);
     try {
-      const [listRes, statsRes] = await Promise.all([
+      const [listRes, statsRes, clientsRes] = await Promise.all([
         api.get('/pipeline'),
         api.get('/pipeline/stats'),
+        api.get('/clients'),
       ]);
       setProspects(listRes.data);
       setStats(statsRes.data ?? EMPTY_STATS);
+      setClients(
+        (clientsRes.data as Client[]).sort((a, b) =>
+          a.company_name.localeCompare(b.company_name),
+        ),
+      );
     } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const clientOptions = useMemo(
+    () => clients.map(c => ({
+      id: c.id,
+      name: c.company_name,
+      contact_name: c.contact_name,
+      email: c.email,
+      phone: c.phone,
+      website: c.website,
+      sector: c.sector,
+      region: c.region,
+    })),
+    [clients],
+  );
 
   useEffect(() => {
     fetchData();
@@ -519,6 +541,7 @@ export default function SalesPipeline() {
 
   async function handleSave(values: ProspectFormValues) {
     const payload = {
+      client_id: values.client_id ? parseInt(values.client_id, 10) : null,
       company_name: values.company_name.trim(),
       contact_name: values.contact_name || null,
       email: values.email || null,
@@ -753,6 +776,7 @@ export default function SalesPipeline() {
         open={drawerOpen}
         onClose={closeDrawer}
         initial={drawerInitial ?? null}
+        clients={clientOptions}
         defaultAssignee={user?.name ?? ''}
         onSave={handleSave}
       />

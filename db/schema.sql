@@ -111,6 +111,7 @@ CREATE TRIGGER set_tenders_updated_at
 -- Sales Pipeline table
 CREATE TABLE IF NOT EXISTS sales_pipeline (
   id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
   company_name VARCHAR(255) NOT NULL,
   contact_name VARCHAR(255),
   email VARCHAR(255),
@@ -173,3 +174,4 @@ CREATE TABLE IF NOT EXISTS client_notes (
 CREATE INDEX IF NOT EXISTS idx_tenders_submission_deadline ON tenders(submission_deadline);
 CREATE INDEX IF NOT EXISTS idx_tenders_reference_number ON tenders(reference_number);
 CREATE INDEX IF NOT EXISTS idx_extractions_url ON extractions(url);
+CREATE INDEX IF NOT EXISTS idx_sales_pipeline_client_id ON sales_pipeline(client_id);

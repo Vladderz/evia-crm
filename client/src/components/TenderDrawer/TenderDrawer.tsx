@@ -5,10 +5,13 @@ import { Textarea } from '../Textarea/Textarea';
 import { Select } from '../Select/Select';
 import { Switch } from '../Switch/Switch';
 import { Button } from '../Button/Button';
+import { ClientPicker, type ClientOption } from '../shared/ClientPicker';
 import { TENDER_STATUS_OPTIONS } from '../../lib/format';
 import type { TenderStatus } from '../../lib/types';
 
 export type { TenderStatus };
+// Re-export for callers that still import the legacy name from here.
+export type TenderClientOption = ClientOption;
 
 export interface TenderFormValues {
   title: string;
@@ -29,17 +32,12 @@ export interface TenderFormValues {
   notes: string;
 }
 
-export interface TenderClientOption {
-  id: number;
-  name: string;
-}
-
 interface TenderDrawerProps {
   open: boolean;
   onClose: () => void;
   /** Initial values - if absent, drawer renders in Add mode. */
   initial?: Partial<TenderFormValues> | null;
-  clients?: TenderClientOption[];
+  clients?: ClientOption[];
   defaultAssignee?: string;
   onSave: (values: TenderFormValues) => Promise<void> | void;
 }
@@ -63,11 +61,11 @@ const EMPTY: TenderFormValues = {
   notes: '',
 };
 
-// Radix Select.Item forbids value="". Sentinels stand in for the
-// "unset" options in the dropdown; we translate back to '' before
+// Radix Select.Item forbids value="". Sentinel stands in for the
+// "Unassigned" option in the dropdown; we translate back to '' before
 // the value lands in form state, so the API payload is unchanged.
+// (The client picker uses its own sentinel inside ClientPicker.)
 const UNASSIGNED_SENTINEL = '__unassigned__';
-const NO_CLIENT_SENTINEL = '__no_client__';
 
 const ASSIGNEE_OPTIONS = [
   { value: UNASSIGNED_SENTINEL, label: 'Unassigned' },
@@ -156,11 +154,6 @@ export function TenderDrawer({
 
   const awaitingDisabled =
     form.status !== 'questionnaire_sent' && form.status !== 'writing';
-
-  const clientOptions = [
-    { value: NO_CLIENT_SENTINEL, label: 'No client' },
-    ...clients.map(c => ({ value: String(c.id), label: c.name })),
-  ];
 
   const footer = (
     <>
@@ -282,12 +275,11 @@ export function TenderDrawer({
           onChange={e => update('sector', e.target.value)}
         />
 
-        <Select
+        <ClientPicker
           label="Client"
-          value={form.client_id || NO_CLIENT_SENTINEL}
-          onValueChange={v => update('client_id', v === NO_CLIENT_SENTINEL ? '' : v)}
-          options={clientOptions}
-          placeholder="Choose a client"
+          clients={clients}
+          value={form.client_id}
+          onChange={v => update('client_id', v)}
         />
 
         <Select
