@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   ArrowLeft,
@@ -17,12 +18,13 @@ import {
   X,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { Client, Tender, DropReason } from '../lib/types';
+import type { Client, Tender, DropReason, ProcurementType } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
 import { KPITile } from '../components/KPITile/KPITile';
 import { StageTabs } from '../components/StageTabs/StageTabs';
+import { SegmentedControl } from '../components/SegmentedControl/SegmentedControl';
 import { FilterBar } from '../components/FilterBar/FilterBar';
 import {
   DataTable,
@@ -45,12 +47,14 @@ import { AwaitingInfoDialog } from '../components/AwaitingInfoDialog/AwaitingInf
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
-  TENDER_STATUS_OPTIONS,
   formatCompactCurrency,
   formatCurrency,
   formatDate,
   formatRelativeDays,
-  getStatusLabel,
+  tenderStatusLabel,
+  tenderStatusOptions,
+  tenderViewOf,
+  type TenderView,
 } from '../lib/format';
 
 /* -----------------------------------------------------------------
@@ -75,14 +79,20 @@ const STATUS_HAS_DOT: Record<string, boolean> = {
   archived: false,
 };
 
-const STAGE_TABS: { key: string; label: string }[] = [
-  { key: 'all', label: 'All' },
-  ...TENDER_STATUS_OPTIONS.map(o => ({ key: o.value, label: o.label })),
-  // Recovery route for legacy rows the old auto-archive job stranded.
-  // Nothing new lands here now, but the tab must exist so those rows
-  // are reachable. Excluded from All and from all KPI totals.
-  { key: 'archived', label: 'Archived' },
-];
+// Stage-tab keys are stable across views; only the labels change with
+// the procurement type of the current view (Won / Lost read Admitted /
+// Not Admitted while DPS is selected). Archived is not type-aware.
+function buildStageTabs(view: TenderView): { key: string; label: string }[] {
+  const typeForLabels: ProcurementType = view === 'dps' ? 'dps' : 'tender';
+  return [
+    { key: 'all', label: 'All' },
+    ...tenderStatusOptions(typeForLabels).map(o => ({ key: o.value, label: o.label })),
+    // Recovery route for legacy rows the old auto-archive job stranded.
+    // Nothing new lands here now, but the tab must exist so those rows
+    // are reachable. Excluded from All and from all KPI totals.
+    { key: 'archived', label: 'Archived' },
+  ];
+}
 
 /* -----------------------------------------------------------------
  * Cycling pipeline tile
@@ -136,12 +146,13 @@ function tenderToForm(t: Tender): Partial<TenderFormValues> {
  * Cell renderers
  * ----------------------------------------------------------------- */
 
-function TenderCell({ row }: { row: Tender }) {
+function TenderCell({ row, view }: { row: Tender; view: TenderView }) {
   const titleSpan = (
     <span className="dt-cell-primary">
       <TruncatedText>{row.title}</TruncatedText>
     </span>
   );
+  const showFrameworkBadge = view === 'tenders' && row.procurement_type === 'framework';
   return (
     <div className="dt-cell-2line">
       {row.tender_url ? (
@@ -157,8 +168,16 @@ function TenderCell({ row }: { row: Tender }) {
       ) : (
         titleSpan
       )}
-      {row.reference_number && (
-        <span className="dt-cell-secondary">{row.reference_number}</span>
+      {(row.reference_number || showFrameworkBadge) && (
+        <span
+          className="dt-cell-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          {row.reference_number}
+          {showFrameworkBadge && (
+            <Badge variant="neutral" size="sm">Framework</Badge>
+          )}
+        </span>
       )}
     </div>
   );
@@ -175,7 +194,7 @@ function StatusCell({ row }: { row: Tender }) {
   return (
     <div className="status-stack">
       <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
-        {getStatusLabel(row.status)}
+        {tenderStatusLabel(row.status, row.procurement_type)}
       </Badge>
       {showAwaiting && (
         <span title={awaitingTooltip}>
@@ -248,10 +267,14 @@ interface ActionsCellProps {
  * it's terminal and worth the friction. Edit and Notes are always
  * available. Drop is always available. The funnel is
  * Info Gathering -> Writing -> Submitted; the buttons mirror
- * that direction (forward = ArrowRight, backward = ArrowLeft). */
+ * that direction (forward = ArrowRight, backward = ArrowLeft).
+ * DPS records read Admitted / Not Admitted in place of Won / Lost. */
 function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwaiting, onDrop }: ActionsCellProps) {
   const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
   const awaitingOn = inActiveStage && row.awaiting_info === true;
+  const isDps = row.procurement_type === 'dps';
+  const markWonLabel = isDps ? 'Mark Admitted' : 'Mark Won';
+  const markLostLabel = isDps ? 'Mark Not Admitted' : 'Mark Lost';
   return (
     <span
       className="dt-actions"
@@ -304,10 +327,10 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwai
             Back to Writing
           </Button>
           <Button variant="primary" size="sm" icon={Check} onClick={() => onAdvance(row, 'won')}>
-            Mark Won
+            {markWonLabel}
           </Button>
           <Button variant="danger" size="sm" icon={X} onClick={() => onMarkLost(row)}>
-            Mark Lost
+            {markLostLabel}
           </Button>
         </>
       )}
@@ -334,13 +357,14 @@ function ExpandPanel({
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
 }) {
+  const markWonLabel = row.procurement_type === 'dps' ? 'Mark Admitted' : 'Mark Won';
   const advanceTarget: { label: string; status: string } | null =
     row.status === 'questionnaire_sent'
       ? { label: 'Move to Writing', status: 'writing' }
       : row.status === 'writing'
         ? { label: 'Move to Submitted', status: 'submitted' }
         : row.status === 'submitted'
-          ? { label: 'Mark Won', status: 'won' }
+          ? { label: markWonLabel, status: 'won' }
           : null;
 
   return (
@@ -438,6 +462,10 @@ export default function ActiveTenders() {
   const { user } = useAuth();
   const toast = useToast();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: TenderView = searchParams.get('type') === 'dps' ? 'dps' : 'tenders';
+  const isDpsView = view === 'dps';
+
   const [tenders, setTenders] = useState<Tender[]>([]);
   // Fetched separately from /tenders?view=archived. The default list
   // deliberately excludes archived, so KPI totals derived from `tenders`
@@ -453,6 +481,16 @@ export default function ActiveTenders() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  function switchView(nextView: TenderView) {
+    setSearchParams(prev => {
+      const params = new URLSearchParams(prev);
+      if (nextView === 'dps') params.set('type', 'dps');
+      else params.delete('type');
+      return params;
+    }, { replace: true });
+    setExpandedId(null);
+  }
 
   /* Drawer */
   const [drawerInitial, setDrawerInitial] = useState<
@@ -506,6 +544,19 @@ export default function ActiveTenders() {
     fetchData();
   }, [fetchData]);
 
+  /* Everything on the page derives from these two scoped lists rather
+   * than the raw fetches. tenderViewOf falls back to 'tenders' for any
+   * row missing a procurement_type, so a stale record can never be
+   * hidden from both views at once. */
+  const scopedTenders = useMemo(
+    () => tenders.filter(t => tenderViewOf(t.procurement_type) === view),
+    [tenders, view],
+  );
+  const scopedArchived = useMemo(
+    () => archivedTenders.filter(t => tenderViewOf(t.procurement_type) === view),
+    [archivedTenders, view],
+  );
+
   const counts = useMemo(() => {
     const c: Record<string, number> = {
       all: 0,
@@ -514,20 +565,20 @@ export default function ActiveTenders() {
       submitted: 0,
       won: 0,
       lost: 0,
-      archived: archivedTenders.length,
+      archived: scopedArchived.length,
     };
-    for (const t of tenders) {
+    for (const t of scopedTenders) {
       c[t.status] = (c[t.status] ?? 0) + 1;
       if (t.status !== 'won' && t.status !== 'lost' && t.status !== 'archived') {
         c.all = (c.all ?? 0) + 1;
       }
     }
     return c;
-  }, [tenders, archivedTenders]);
+  }, [scopedTenders, scopedArchived]);
 
   const stats = useMemo(() => {
-    const won = tenders.filter(t => t.status === 'won');
-    const lost = tenders.filter(t => t.status === 'lost');
+    const won = scopedTenders.filter(t => t.status === 'won');
+    const lost = scopedTenders.filter(t => t.status === 'lost');
     const decided = won.length + lost.length;
     return {
       active: counts.all ?? 0,
@@ -537,7 +588,7 @@ export default function ActiveTenders() {
       decided,
       winRate: decided > 0 ? Math.round((won.length / decided) * 100) : 0,
     };
-  }, [tenders, counts]);
+  }, [scopedTenders, counts]);
 
   /* Cycling pipeline tile: three views on the same funnel, driven by
    * clicks on the tile itself. State persists so page reloads keep the
@@ -545,7 +596,7 @@ export default function ActiveTenders() {
    * dropped + archived rows, so we don't re-filter for those. */
   const pipelineValues = useMemo(() => {
     const sumFor = (statuses: TenderStatus[]) => {
-      const rows = tenders.filter(t => statuses.includes(t.status as TenderStatus));
+      const rows = scopedTenders.filter(t => statuses.includes(t.status as TenderStatus));
       return {
         value: rows.reduce((s, t) => s + Number(t.estimated_value ?? 0), 0),
         fees:  rows.reduce((s, t) => s + Number(t.evia_fee ?? 0), 0),
@@ -556,6 +607,20 @@ export default function ActiveTenders() {
       active:    sumFor(['questionnaire_sent', 'writing']),
       submitted: sumFor(['submitted']),
     };
+  }, [scopedTenders]);
+
+  /* Active counts per view - the only figure that reads the unscoped
+   * tenders list, needed to label the view switch at the top of the
+   * page. Both counts come from the same iteration to keep them in
+   * sync. */
+  const viewSwitchCounts = useMemo(() => {
+    const active: Record<TenderView, number> = { tenders: 0, dps: 0 };
+    for (const t of tenders) {
+      if (t.status === 'questionnaire_sent' || t.status === 'writing' || t.status === 'submitted') {
+        active[tenderViewOf(t.procurement_type)] += 1;
+      }
+    }
+    return active;
   }, [tenders]);
 
   const [pipelineState, setPipelineState] = useState<PipelineTileState>(() => {
@@ -578,31 +643,52 @@ export default function ActiveTenders() {
   const pipelineMeta = PIPELINE_TILE_META[pipelineState];
   const pipelineFigures = pipelineValues[pipelineState];
 
-  const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    // Archived rows are fetched separately and never mixed into `tenders`,
-    // so KPI totals and the All tab don't need extra guards for them.
-    const source = stage === 'archived' ? archivedTenders : tenders;
-    return source.filter(t => {
-      if (stage === 'all') {
-        if (t.status === 'won' || t.status === 'lost' || t.status === 'archived') {
+  /* Applies the stage / assignee / search filters to a source list.
+   * Extracted so the same predicate can be applied to the other view's
+   * lists when the cross-view search hint counts matches. */
+  const applyRowFilters = useCallback(
+    (source: Tender[]): Tender[] => {
+      const q = debouncedSearch.trim().toLowerCase();
+      return source.filter(t => {
+        if (stage === 'all') {
+          if (t.status === 'won' || t.status === 'lost' || t.status === 'archived') {
+            return false;
+          }
+        } else if (stage === 'archived') {
+          // source is already status='archived' server-side; no extra check.
+        } else if (t.status !== stage) {
           return false;
         }
-      } else if (stage === 'archived') {
-        // source is already status='archived' server-side; no extra check.
-      } else if (t.status !== stage) {
-        return false;
-      }
-      if (assigned && t.assigned_to !== assigned) return false;
-      if (q) {
-        const hay = `${t.title} ${t.client_name ?? ''} ${t.reference_number ?? ''} ${t.buyer ?? ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [tenders, archivedTenders, stage, debouncedSearch, assigned]);
+        if (assigned && t.assigned_to !== assigned) return false;
+        if (q) {
+          const hay = `${t.title} ${t.client_name ?? ''} ${t.reference_number ?? ''} ${t.buyer ?? ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    },
+    [stage, debouncedSearch, assigned],
+  );
 
-  const tabsWithCount = STAGE_TABS.map(t => ({ ...t, count: counts[t.key] ?? 0 }));
+  const filtered = useMemo(() => {
+    const source = stage === 'archived' ? scopedArchived : scopedTenders;
+    return applyRowFilters(source);
+  }, [scopedTenders, scopedArchived, stage, applyRowFilters]);
+
+  /* Rows in the other view that would pass the current filters - used
+   * when a search is active and this view is empty. Same predicate,
+   * same stage tab, same assignee. */
+  const otherViewMatches = useMemo(() => {
+    if (!debouncedSearch.trim()) return 0;
+    if (filtered.length > 0) return 0;
+    const otherView: TenderView = view === 'dps' ? 'tenders' : 'dps';
+    const otherTenders = tenders.filter(t => tenderViewOf(t.procurement_type) === otherView);
+    const otherArchived = archivedTenders.filter(t => tenderViewOf(t.procurement_type) === otherView);
+    const source = stage === 'archived' ? otherArchived : otherTenders;
+    return applyRowFilters(source).length;
+  }, [view, tenders, archivedTenders, stage, debouncedSearch, filtered.length, applyRowFilters]);
+
+  const tabsWithCount = buildStageTabs(view).map(t => ({ ...t, count: counts[t.key] ?? 0 }));
 
   /* ------------- Handlers ------------- */
 
@@ -641,7 +727,7 @@ export default function ActiveTenders() {
   async function handleAdvance(t: Tender, newStatus: string) {
     try {
       await api.put(`/tenders/${t.id}`, { status: newStatus });
-      const label = newStatus === 'won' ? 'Won' : newStatus === 'lost' ? 'Lost' : getStatusLabel(newStatus);
+      const label = tenderStatusLabel(newStatus, t.procurement_type);
       toast.success(`Moved to ${label}`);
       fetchData();
     } catch {
@@ -679,13 +765,24 @@ export default function ActiveTenders() {
     ) {
       payload.procurement_type = values.procurement_type;
     }
+    const newView = tenderViewOf(values.procurement_type);
+    const loadedView = editingLoadedType !== undefined ? tenderViewOf(editingLoadedType) : undefined;
+    const viewLabel = (v: TenderView) => v === 'dps' ? 'DPS' : 'Tenders and Frameworks';
     try {
       if (editingTenderId !== null) {
         await api.put(`/tenders/${editingTenderId}`, payload);
-        toast.success('Tender updated');
+        if (loadedView !== undefined && loadedView !== newView) {
+          toast.success(`Moved to ${viewLabel(newView)}`);
+        } else {
+          toast.success('Tender updated');
+        }
       } else {
         await api.post('/tenders', payload);
-        toast.success('Tender added');
+        if (newView !== view) {
+          toast.success(`Added to ${viewLabel(newView)}`);
+        } else {
+          toast.success('Tender added');
+        }
       }
       closeDrawer();
       fetchData();
@@ -735,16 +832,17 @@ export default function ActiveTenders() {
   async function handleMarkLostConfirm({ lossNote }: { lossNote: string }) {
     if (!markLostTarget) return;
     const target = markLostTarget;
+    const outcomeLabel = tenderStatusLabel('lost', target.procurement_type);
     try {
       await api.put(`/tenders/${target.id}`, {
         status: 'lost',
         loss_note: lossNote || null,
       });
-      toast.success(`${target.title} marked as Lost`);
+      toast.success(`${target.title} marked as ${outcomeLabel}`);
       setMarkLostTarget(null);
       fetchData();
     } catch {
-      toast.error('Failed to mark as Lost. Please try again.');
+      toast.error(`Failed to mark as ${outcomeLabel}. Please try again.`);
     }
   }
 
@@ -783,14 +881,26 @@ export default function ActiveTenders() {
     name: c.company_name,
   }));
 
+  const tenderColumn: Column<Tender> = {
+    key: 'tender',
+    header: 'Tender',
+    width: 'flex',
+    // In the DPS view the Value column is hidden. Widen the Tender
+    // cap by the same 100px so the freed space is absorbed and no
+    // dead zone appears at the right of the row.
+    maxWidth: isDpsView ? 460 : 360,
+    render: row => <TenderCell row={row} view={view} />,
+  };
+  const valueColumn: Column<Tender> = {
+    key: 'value',
+    header: 'Value',
+    width: 100,
+    align: 'right',
+    mono: true,
+    render: row => <ValueCell value={row.estimated_value} />,
+  };
   const columns: Column<Tender>[] = [
-    {
-      key: 'tender',
-      header: 'Tender',
-      width: 'flex',
-      maxWidth: 360,
-      render: row => <TenderCell row={row} />,
-    },
+    tenderColumn,
     {
       key: 'status',
       header: 'Status',
@@ -826,14 +936,7 @@ export default function ActiveTenders() {
         );
       },
     },
-    {
-      key: 'value',
-      header: 'Value',
-      width: 100,
-      align: 'right',
-      mono: true,
-      render: row => <ValueCell value={row.estimated_value} />,
-    },
+    ...(isDpsView ? [] : [valueColumn]),
     {
       key: 'fee',
       header: 'Fee',
@@ -884,71 +987,131 @@ export default function ActiveTenders() {
     },
   ];
 
+  const pageDescription = isDpsView
+    ? 'Track DPS applications through writing, submission, and admission'
+    : 'Track tenders and frameworks through writing, submission, and outcomes';
+  const addButtonLabel = isDpsView ? 'Add DPS Application' : 'Add Tender';
+  const defaultTypeForAdd: ProcurementType = isDpsView ? 'dps' : 'tender';
+
   return (
     <>
       <PageHeader
         title="Active Tenders"
-        description="Track tenders through writing, submission, and outcomes"
+        description={pageDescription}
         actions={
           <Button variant="primary" icon={Plus} onClick={openAdd}>
-            Add Tender
+            {addButtonLabel}
           </Button>
         }
       />
 
+      <div style={{ marginTop: 16, marginBottom: 16 }}>
+        <SegmentedControl<TenderView>
+          ariaLabel="Tender type"
+          value={view}
+          onChange={switchView}
+          options={[
+            { value: 'tenders', label: 'Tenders and Frameworks', count: viewSwitchCounts.tenders },
+            { value: 'dps',     label: 'DPS',                    count: viewSwitchCounts.dps     },
+          ]}
+        />
+      </div>
+
       <div className="kpi-row">
-        <KPITile
-          label="Active Tenders"
-          value={loading ? 0 : stats.active}
-          icon={FileText}
-          tone="brand"
-          loading={loading}
-        />
-        <KPITile
-          label={pipelineMeta.label}
-          value={formatCompactCurrency(pipelineFigures.value)}
-          hint={`${formatCompactCurrency(pipelineFigures.fees)} in fees`}
-          icon={pipelineMeta.icon}
-          tone="info"
-          mono
-          loading={loading}
-          onClick={cyclePipelineState}
-          ariaLabel={
-            `${pipelineMeta.label}: ${formatCompactCurrency(pipelineFigures.value)}, `
-            + `${formatCompactCurrency(pipelineFigures.fees)} in fees. `
-            + `Click to cycle to ${PIPELINE_TILE_META[nextPipelineState].label}.`
-          }
-          footer={
-            <div className="kpi-tile-dots" aria-hidden>
-              {PIPELINE_STATE_ORDER.map(s => (
-                <span
-                  key={s}
-                  className={`kpi-tile-dot${s === pipelineState ? ' kpi-tile-dot-active' : ''}`}
-                />
-              ))}
-            </div>
-          }
-        />
-        <KPITile
-          label="Won"
-          value={formatCurrency(stats.wonValue)}
-          hint={`${formatCurrency(stats.wonFees)} in fees`}
-          icon={Trophy}
-          tone="success"
-          mono
-          loading={loading}
-        />
-        <KPITile
-          label="Win Rate"
-          value={
-            stats.decided > 0
-              ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
-              : '0 of 0 (0%)'
-          }
-          icon={Target}
-          tone="warning"
-          loading={loading}
-        />
+        {isDpsView ? (
+          <>
+            <KPITile
+              label="Active Applications"
+              value={loading ? 0 : stats.active}
+              icon={FileText}
+              tone="brand"
+              loading={loading}
+            />
+            <KPITile
+              label="Fees in Play"
+              value={formatCompactCurrency(pipelineValues.total.fees)}
+              hint="No contract value"
+              icon={Layers}
+              tone="info"
+              mono
+              loading={loading}
+            />
+            <KPITile
+              label="Admitted"
+              value={loading ? 0 : stats.wonCount}
+              hint={`${formatCurrency(stats.wonFees)} in fees`}
+              icon={Trophy}
+              tone="success"
+              loading={loading}
+            />
+            <KPITile
+              label="Pass Rate"
+              value={
+                stats.decided > 0
+                  ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
+                  : '0 of 0 (0%)'
+              }
+              icon={Target}
+              tone="warning"
+              loading={loading}
+            />
+          </>
+        ) : (
+          <>
+            <KPITile
+              label="Active Tenders"
+              value={loading ? 0 : stats.active}
+              icon={FileText}
+              tone="brand"
+              loading={loading}
+            />
+            <KPITile
+              label={pipelineMeta.label}
+              value={formatCompactCurrency(pipelineFigures.value)}
+              hint={`${formatCompactCurrency(pipelineFigures.fees)} in fees`}
+              icon={pipelineMeta.icon}
+              tone="info"
+              mono
+              loading={loading}
+              onClick={cyclePipelineState}
+              ariaLabel={
+                `${pipelineMeta.label}: ${formatCompactCurrency(pipelineFigures.value)}, `
+                + `${formatCompactCurrency(pipelineFigures.fees)} in fees. `
+                + `Click to cycle to ${PIPELINE_TILE_META[nextPipelineState].label}.`
+              }
+              footer={
+                <div className="kpi-tile-dots" aria-hidden>
+                  {PIPELINE_STATE_ORDER.map(s => (
+                    <span
+                      key={s}
+                      className={`kpi-tile-dot${s === pipelineState ? ' kpi-tile-dot-active' : ''}`}
+                    />
+                  ))}
+                </div>
+              }
+            />
+            <KPITile
+              label="Won"
+              value={formatCurrency(stats.wonValue)}
+              hint={`${formatCurrency(stats.wonFees)} in fees`}
+              icon={Trophy}
+              tone="success"
+              mono
+              loading={loading}
+            />
+            <KPITile
+              label="Win Rate"
+              value={
+                stats.decided > 0
+                  ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
+                  : '0 of 0 (0%)'
+              }
+              icon={Target}
+              tone="warning"
+              loading={loading}
+            />
+          </>
+        )}
       </div>
 
       <StageTabs tabs={tabsWithCount} activeKey={stage} onChange={setStage} />
@@ -997,16 +1160,34 @@ export default function ActiveTenders() {
             />
           ),
         }}
-        emptyState={{
-          message:
-            tenders.length === 0
-              ? 'Your first tender awaits'
-              : 'No tenders match these filters',
-          action:
-            tenders.length === 0
-              ? { label: 'Add Tender', onClick: openAdd }
-              : { label: 'Clear filters', onClick: clearFilters },
-        }}
+        emptyState={
+          scopedTenders.length === 0 && scopedArchived.length === 0 && !debouncedSearch.trim()
+            ? {
+                message: isDpsView ? 'Your first DPS application awaits' : 'Your first tender awaits',
+                action: { label: addButtonLabel, onClick: openAdd },
+              }
+            : otherViewMatches > 0
+              ? {
+                  message: `No matches here. ${otherViewMatches} in ${isDpsView ? 'Tenders and Frameworks' : 'DPS'}.`,
+                  extra: (
+                    <div style={{ marginTop: 12 }}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => switchView(isDpsView ? 'tenders' : 'dps')}
+                      >
+                        {isDpsView ? 'View in Tenders and Frameworks' : 'View in DPS'}
+                      </Button>
+                    </div>
+                  ),
+                }
+              : {
+                  message: isDpsView
+                    ? 'No DPS applications match these filters'
+                    : 'No tenders match these filters',
+                  action: { label: 'Clear filters', onClick: clearFilters },
+                }
+        }
       />
 
       <TenderDrawer
@@ -1015,6 +1196,7 @@ export default function ActiveTenders() {
         initial={drawerInitial ?? null}
         clients={clientOptions}
         defaultAssignee={user?.name ?? ''}
+        defaultProcurementType={defaultTypeForAdd}
         onSave={handleSave}
       />
 
@@ -1029,6 +1211,7 @@ export default function ActiveTenders() {
       <MarkLostDialog
         open={markLostTarget !== null}
         tenderTitle={markLostTarget?.title ?? ''}
+        procurementType={markLostTarget?.procurement_type}
         onClose={() => setMarkLostTarget(null)}
         onConfirm={handleMarkLostConfirm}
       />

@@ -50,6 +50,8 @@ export interface DataTableProps<T> {
   emptyState?: {
     message: string;
     action?: { label: string; onClick: () => void };
+    /** Additional content rendered below the message and action. */
+    extra?: ReactNode;
   };
   onRowClick?: (row: T) => void;
   expandedRow?: {
@@ -307,6 +309,7 @@ export function DataTable<T>({
                 {emptyState.action.label}
               </Button>
             )}
+            {emptyState?.extra}
           </td>
         </tr>
       </tbody>
