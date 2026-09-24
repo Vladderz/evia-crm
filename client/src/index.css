@@ -1879,6 +1879,60 @@ body {
 }
 
 /* ================================================================
+   SEGMENTED CONTROL
+   ================================================================ */
+
+.segmented-control {
+  display: inline-flex;
+  align-items: stretch;
+  background: var(--brand-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+.segmented-control-full {
+  display: flex;
+  width: 100%;
+}
+.segmented-control-segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary-v1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--transition-base),
+    color var(--transition-base),
+    border-color var(--transition-base);
+}
+.segmented-control-segment:hover:not(.segmented-control-segment-selected) {
+  color: var(--text-primary-v1);
+}
+.segmented-control-segment-selected {
+  background: var(--surface-card);
+  border-color: var(--border-subtle);
+  color: var(--brand-text);
+  font-weight: 600;
+}
+.segmented-control-segment:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+.segmented-control-full .segmented-control-segment {
+  flex: 1 1 0;
+}
+
+/* ================================================================
    FILTER BAR
    ================================================================ */
 

@@ -121,6 +121,10 @@ function tenderToForm(t: Tender): Partial<TenderFormValues> {
     sector: t.sector ?? '',
     client_id: t.client_id != null ? String(t.client_id) : '',
     status: t.status as TenderStatus,
+    // Fallback is display-only. When Edit mode saves, handleSave omits
+    // procurement_type from the payload if the loaded value is missing
+    // so a record whose type failed to load can never be overwritten.
+    procurement_type: t.procurement_type ?? 'tender',
     awaiting_info: t.awaiting_info ?? false,
     awaiting_info_note: t.awaiting_info_note ?? '',
     assigned_to: t.assigned_to ?? '',
@@ -455,6 +459,10 @@ export default function ActiveTenders() {
     Partial<TenderFormValues> | null | undefined
   >(undefined);
   const [editingTenderId, setEditingTenderId] = useState<number | null>(null);
+  // The record's procurement_type at load time. undefined = server did
+  // not return one (or we are in Add mode). handleSave uses this so an
+  // unloaded type can never be silently overwritten.
+  const [editingLoadedType, setEditingLoadedType] = useState<Tender['procurement_type'] | undefined>(undefined);
   const drawerOpen = drawerInitial !== undefined;
 
   /* Notes panel + delete + drop */
@@ -610,17 +618,20 @@ export default function ActiveTenders() {
 
   function openAdd() {
     setEditingTenderId(null);
+    setEditingLoadedType(undefined);
     setDrawerInitial(null);
   }
 
   function openEdit(t: Tender) {
     setEditingTenderId(t.id);
+    setEditingLoadedType(t.procurement_type);
     setDrawerInitial(tenderToForm(t));
   }
 
   function closeDrawer() {
     setDrawerInitial(undefined);
     setEditingTenderId(null);
+    setEditingLoadedType(undefined);
   }
 
   function openNotes(t: { id: number; title: string }) {
@@ -657,6 +668,17 @@ export default function ActiveTenders() {
       awaiting_info: values.awaiting_info,
       awaiting_info_note: values.awaiting_info_note || null,
     };
+    // Add mode always sends procurement_type. Edit mode only sends it
+    // when we actually changed it, so a record whose type failed to
+    // load (editingLoadedType === undefined) cannot be overwritten.
+    if (editingTenderId === null) {
+      payload.procurement_type = values.procurement_type;
+    } else if (
+      editingLoadedType !== undefined
+      && values.procurement_type !== editingLoadedType
+    ) {
+      payload.procurement_type = values.procurement_type;
+    }
     try {
       if (editingTenderId !== null) {
         await api.put(`/tenders/${editingTenderId}`, payload);

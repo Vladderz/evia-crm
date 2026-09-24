@@ -5,9 +5,10 @@ import { Textarea } from '../Textarea/Textarea';
 import { Select } from '../Select/Select';
 import { Switch } from '../Switch/Switch';
 import { Button } from '../Button/Button';
+import { SegmentedControl } from '../SegmentedControl/SegmentedControl';
 import { ClientPicker, type ClientOption } from '../shared/ClientPicker';
-import { TENDER_STATUS_OPTIONS } from '../../lib/format';
-import type { TenderStatus } from '../../lib/types';
+import { tenderStatusOptions } from '../../lib/format';
+import type { ProcurementType, TenderStatus } from '../../lib/types';
 
 export type { TenderStatus };
 // Re-export for callers that still import the legacy name from here.
@@ -26,6 +27,7 @@ export interface TenderFormValues {
   sector: string;
   client_id: string;
   status: TenderStatus;
+  procurement_type: ProcurementType;
   awaiting_info: boolean;
   awaiting_info_note: string;
   assigned_to: string;
@@ -39,6 +41,8 @@ interface TenderDrawerProps {
   initial?: Partial<TenderFormValues> | null;
   clients?: ClientOption[];
   defaultAssignee?: string;
+  /** Add-mode default for procurement_type. Ignored in Edit mode. */
+  defaultProcurementType?: ProcurementType;
   onSave: (values: TenderFormValues) => Promise<void> | void;
 }
 
@@ -55,10 +59,29 @@ const EMPTY: TenderFormValues = {
   sector: '',
   client_id: '',
   status: 'questionnaire_sent',
+  procurement_type: 'tender',
   awaiting_info: false,
   awaiting_info_note: '',
   assigned_to: '',
   notes: '',
+};
+
+const TYPE_OPTIONS: { value: ProcurementType; label: string }[] = [
+  { value: 'tender',    label: 'Tender' },
+  { value: 'framework', label: 'Framework' },
+  { value: 'dps',       label: 'DPS' },
+];
+
+const ADD_TITLES: Record<ProcurementType, string> = {
+  tender:    'Add tender',
+  framework: 'Add framework',
+  dps:       'Add DPS application',
+};
+
+const EDIT_TITLES: Record<ProcurementType, string> = {
+  tender:    'Edit tender',
+  framework: 'Edit framework',
+  dps:       'Edit DPS application',
 };
 
 // Radix Select.Item forbids value="". Sentinel stands in for the
@@ -80,23 +103,32 @@ export function TenderDrawer({
   initial,
   clients = [],
   defaultAssignee = '',
+  defaultProcurementType = 'tender',
   onSave,
 }: TenderDrawerProps) {
   const isEdit = !!initial;
   const [form, setForm] = useState<TenderFormValues>(() => ({
     ...EMPTY,
     assigned_to: defaultAssignee,
+    procurement_type: defaultProcurementType,
     ...(initial ?? {}),
   }));
   const [titleError, setTitleError] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  /* Reset whenever a new tender is loaded. */
+  /* Reset whenever a new tender is loaded. In Add mode
+   * procurement_type resets to defaultProcurementType alongside every
+   * other field. In Edit mode `initial` carries the record's type. */
   useEffect(() => {
     if (!open) return;
-    setForm({ ...EMPTY, assigned_to: defaultAssignee, ...(initial ?? {}) });
+    setForm({
+      ...EMPTY,
+      assigned_to: defaultAssignee,
+      procurement_type: defaultProcurementType,
+      ...(initial ?? {}),
+    });
     setTitleError(false);
-  }, [open, initial, defaultAssignee]);
+  }, [open, initial, defaultAssignee, defaultProcurementType]);
 
   function update<K extends keyof TenderFormValues>(key: K, value: TenderFormValues[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -134,6 +166,11 @@ export function TenderDrawer({
   const awaitingDisabled =
     form.status !== 'questionnaire_sent' && form.status !== 'writing';
 
+  const addTitle = ADD_TITLES[form.procurement_type];
+  const editTitle = EDIT_TITLES[form.procurement_type];
+  const drawerTitle = isEdit ? editTitle : addTitle;
+  const submitLabel = isEdit ? 'Save changes' : addTitle;
+
   const footer = (
     <>
       <Button variant="ghost" size="md" onClick={onClose} disabled={saving}>
@@ -146,7 +183,7 @@ export function TenderDrawer({
         loading={saving}
         type="submit"
       >
-        {isEdit ? 'Save changes' : 'Add tender'}
+        {submitLabel}
       </Button>
     </>
   );
@@ -155,10 +192,26 @@ export function TenderDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Edit tender' : 'Add tender'}
+      title={drawerTitle}
       footer={footer}
     >
       <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
+        <div className="field">
+          <label className="field-label">Type</label>
+          <SegmentedControl<ProcurementType>
+            options={TYPE_OPTIONS}
+            value={form.procurement_type}
+            onChange={v => update('procurement_type', v)}
+            ariaLabel="Type"
+            fullWidth
+          />
+          {form.procurement_type === 'dps' && (
+            <span className="field-hint">
+              Includes dynamic markets. Not counted in the win rate.
+            </span>
+          )}
+        </div>
+
         <Input
           label="Tender URL"
           placeholder="https://..."
@@ -269,8 +322,11 @@ export function TenderDrawer({
             // display and reclassify it - after picking any other
             // value the option drops back out.
             form.status === 'archived'
-              ? [...TENDER_STATUS_OPTIONS, { value: 'archived', label: 'Archived' }]
-              : TENDER_STATUS_OPTIONS
+              ? [
+                  ...tenderStatusOptions(form.procurement_type),
+                  { value: 'archived', label: 'Archived' },
+                ]
+              : tenderStatusOptions(form.procurement_type)
           }
         />
 

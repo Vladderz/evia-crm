@@ -60,6 +60,10 @@ function tenderToFormFromServer(t: Tender): Partial<TenderFormValues> {
     sector: t.sector ?? '',
     client_id: t.client_id != null ? String(t.client_id) : '',
     status: t.status as TenderStatus,
+    // Fallback is display-only; the payload builder in handleTenderSave
+    // uses the raw loadedType so an unloaded value can never be
+    // overwritten.
+    procurement_type: t.procurement_type ?? 'tender',
     awaiting_info: t.awaiting_info ?? false,
     awaiting_info_note: t.awaiting_info_note ?? '',
     assigned_to: t.assigned_to ?? '',
@@ -112,6 +116,7 @@ export default function NoMansLand() {
   const [tenderDrawer, setTenderDrawer] = useState<{
     initial: Partial<TenderFormValues>;
     id: number;
+    loadedType: Tender['procurement_type'] | undefined;
   } | null>(null);
   const [prospectDrawer, setProspectDrawer] = useState<{
     initial: Partial<ProspectFormValues>;
@@ -217,7 +222,11 @@ export default function NoMansLand() {
     try {
       if (row.source === 'tender') {
         const res = await api.get(`/tenders/${row.id}`);
-        setTenderDrawer({ initial: tenderToFormFromServer(res.data), id: row.id });
+        setTenderDrawer({
+          initial: tenderToFormFromServer(res.data),
+          id: row.id,
+          loadedType: res.data.procurement_type,
+        });
       } else {
         const res = await api.get(`/pipeline/${row.id}`);
         setProspectDrawer({ initial: prospectToFormFromServer(res.data), id: row.id });
@@ -247,6 +256,15 @@ export default function NoMansLand() {
       awaiting_info: values.awaiting_info,
       awaiting_info_note: values.awaiting_info_note || null,
     };
+    // Edit-only mapping here; only send procurement_type when we
+    // actually changed it, so a record whose type failed to load
+    // cannot be overwritten.
+    if (
+      tenderDrawer.loadedType !== undefined
+      && values.procurement_type !== tenderDrawer.loadedType
+    ) {
+      payload.procurement_type = values.procurement_type;
+    }
     try {
       await api.put(`/tenders/${tenderDrawer.id}`, payload);
       toast.success('Tender updated');
