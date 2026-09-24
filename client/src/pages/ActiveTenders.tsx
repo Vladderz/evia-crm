@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   ArrowLeft,
@@ -56,6 +55,7 @@ import {
   tenderViewOf,
   type TenderView,
 } from '../lib/format';
+import { useTenderView } from '../lib/useTenderView';
 
 /* -----------------------------------------------------------------
  * Status -> Badge mapping
@@ -462,8 +462,7 @@ export default function ActiveTenders() {
   const { user } = useAuth();
   const toast = useToast();
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const view: TenderView = searchParams.get('type') === 'dps' ? 'dps' : 'tenders';
+  const { view, setView } = useTenderView();
   const isDpsView = view === 'dps';
 
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -483,12 +482,7 @@ export default function ActiveTenders() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function switchView(nextView: TenderView) {
-    setSearchParams(prev => {
-      const params = new URLSearchParams(prev);
-      if (nextView === 'dps') params.set('type', 'dps');
-      else params.delete('type');
-      return params;
-    }, { replace: true });
+    setView(nextView);
     setExpandedId(null);
   }
 

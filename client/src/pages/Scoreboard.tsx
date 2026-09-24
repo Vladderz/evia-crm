@@ -6,13 +6,22 @@ import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
 import { KPITile } from '../components/KPITile/KPITile';
 import { StageTabs } from '../components/StageTabs/StageTabs';
+import { SegmentedControl } from '../components/SegmentedControl/SegmentedControl';
 import {
   DataTable,
   TruncatedText,
   type Column,
 } from '../components/DataTable/DataTable';
 import { Badge, type BadgeVariant } from '../components/Badge/Badge';
-import { formatCompactCurrency, formatCurrency, formatDate } from '../lib/format';
+import {
+  formatCompactCurrency,
+  formatCurrency,
+  formatDate,
+  tenderStatusLabel,
+  tenderViewOf,
+  type TenderView,
+} from '../lib/format';
+import { useTenderView } from '../lib/useTenderView';
 
 /* -----------------------------------------------------------------
  * Types + helpers
@@ -84,17 +93,24 @@ function monthRange(
   return out;
 }
 
-const OUTCOME_LABEL: Record<ScoreboardStatus, string> = {
-  submitted: 'Awaiting',
-  won: 'Won',
-  lost: 'Lost',
-};
-
 const OUTCOME_VARIANT: Record<ScoreboardStatus, BadgeVariant> = {
   submitted: 'warning',
   won: 'success',
   lost: 'danger',
 };
+
+/**
+ * Outcome badge text: 'submitted' always reads Awaiting; 'won' and
+ * 'lost' become Admitted / Not Admitted on DPS rows, keeping the same
+ * badge variants as Won / Lost. Uses the row's actual procurement_type
+ * rather than the current view so a row rendered under the wrong view
+ * (should not happen after scoping, but robust) still labels itself
+ * correctly.
+ */
+function outcomeLabel(status: ScoreboardStatus, procurementType: Tender['procurement_type']): string {
+  if (status === 'submitted') return 'Awaiting';
+  return tenderStatusLabel(status, procurementType);
+}
 
 interface ScoreboardStats {
   submitted: number;
@@ -190,7 +206,7 @@ function ClientNameCell({ row }: { row: TenderRow }) {
 function OutcomeCell({ row }: { row: TenderRow }) {
   return (
     <Badge variant={OUTCOME_VARIANT[row.status]} withDot>
-      {OUTCOME_LABEL[row.status]}
+      {outcomeLabel(row.status, row.procurement_type)}
     </Badge>
   );
 }
@@ -213,6 +229,8 @@ function WinRateText({ stats }: { stats: ScoreboardStats }) {
 
 export default function Scoreboard() {
   const toast = useToast();
+  const { view, setView } = useTenderView();
+  const isDpsView = view === 'dps';
 
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,12 +255,28 @@ export default function Scoreboard() {
   }, [fetchData]);
 
   /* Filter to the population that belongs on this page: status is
-   * submitted / won / lost. Info Gathering and Writing are excluded
-   * everywhere, including from the month-range calculation. */
+   * submitted / won / lost, and the row falls into the current view.
+   * Info Gathering and Writing are excluded everywhere, including
+   * from the month-range calculation. */
   const scored = useMemo(() => {
     return tenders.filter(
-      t => t.status === 'submitted' || t.status === 'won' || t.status === 'lost',
+      t =>
+        (t.status === 'submitted' || t.status === 'won' || t.status === 'lost')
+        && tenderViewOf(t.procurement_type) === view,
     ) as TenderRow[];
+  }, [tenders, view]);
+
+  /* Counts for the view switch: how many rows the All tab would show
+   * in each view (i.e. dated + view-scoped). Reads the unscoped tenders
+   * list once so both counts stay in sync. */
+  const viewSwitchCounts = useMemo(() => {
+    const c: Record<TenderView, number> = { tenders: 0, dps: 0 };
+    for (const t of tenders) {
+      if (t.status !== 'submitted' && t.status !== 'won' && t.status !== 'lost') continue;
+      if (!t.submission_deadline || !parseYearMonth(t.submission_deadline)) continue;
+      c[tenderViewOf(t.procurement_type)] += 1;
+    }
+    return c;
   }, [tenders]);
 
   /* Partition on submission_deadline presence. Undated rows are
@@ -345,7 +379,7 @@ export default function Scoreboard() {
     },
     {
       key: 'won',
-      header: 'Won',
+      header: isDpsView ? 'Admitted' : 'Won',
       width: 80,
       align: 'right',
       mono: true,
@@ -353,7 +387,7 @@ export default function Scoreboard() {
     },
     {
       key: 'lost',
-      header: 'Lost',
+      header: isDpsView ? 'Not Admitted' : 'Lost',
       width: 80,
       align: 'right',
       mono: true,
@@ -369,7 +403,7 @@ export default function Scoreboard() {
     },
     {
       key: 'win_rate',
-      header: 'Win Rate',
+      header: isDpsView ? 'Pass Rate' : 'Win Rate',
       width: 120,
       align: 'right',
       mono: true,
@@ -377,7 +411,7 @@ export default function Scoreboard() {
     },
     {
       key: 'fees_won',
-      header: 'Fees Won',
+      header: isDpsView ? 'Fees Earned' : 'Fees Won',
       width: 130,
       align: 'right',
       mono: true,
@@ -388,14 +422,25 @@ export default function Scoreboard() {
     },
   ];
 
+  const tenderColumnTender: Column<TenderRow> = {
+    key: 'tender',
+    header: 'Tender',
+    width: 'flex',
+    // DPS hides the Value column; widen the Tender cap by the same
+    // amount so the freed space is absorbed and no dead zone appears.
+    maxWidth: isDpsView ? 430 : 320,
+    render: row => <TenderNameCell row={row} />,
+  };
+  const tenderColumnValue: Column<TenderRow> = {
+    key: 'value',
+    header: 'Value',
+    width: 110,
+    align: 'right',
+    mono: true,
+    render: row => <CurrencyOrDash value={row.estimated_value} />,
+  };
   const tenderColumns: Column<TenderRow>[] = [
-    {
-      key: 'tender',
-      header: 'Tender',
-      width: 'flex',
-      maxWidth: 320,
-      render: row => <TenderNameCell row={row} />,
-    },
+    tenderColumnTender,
     {
       key: 'client',
       header: 'Client',
@@ -403,14 +448,7 @@ export default function Scoreboard() {
       maxWidth: 160,
       render: row => <ClientNameCell row={row} />,
     },
-    {
-      key: 'value',
-      header: 'Value',
-      width: 110,
-      align: 'right',
-      mono: true,
-      render: row => <CurrencyOrDash value={row.estimated_value} />,
-    },
+    ...(isDpsView ? [] : [tenderColumnValue]),
     {
       key: 'fee',
       header: 'Fee',
@@ -458,12 +496,31 @@ export default function Scoreboard() {
       ? `${stats.won} of ${stats.decidedTotal} decided`
       : 'not decided';
 
+  const description = isDpsView
+    ? 'Submitted DPS applications grouped by the calendar month of their submission deadline.'
+    : 'Submitted tenders and frameworks grouped by the calendar month of their submission deadline.';
+
+  const undatedNoun = isDpsView ? 'DPS application' : 'tender';
+  const undatedNounPlural = isDpsView ? 'DPS applications' : 'tenders';
+
   return (
     <>
       <PageHeader
         title="Scoreboard"
-        description="Submitted tenders grouped by the calendar month of their submission deadline."
+        description={description}
       />
+
+      <div style={{ marginTop: 16, marginBottom: 16 }}>
+        <SegmentedControl<TenderView>
+          ariaLabel="Tender type"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'tenders', label: 'Tenders and Frameworks', count: viewSwitchCounts.tenders },
+            { value: 'dps',     label: 'DPS',                    count: viewSwitchCounts.dps     },
+          ]}
+        />
+      </div>
 
       {undatedCount > 0 && (
         <div
@@ -479,64 +536,118 @@ export default function Scoreboard() {
           }}
         >
           {undatedCount === 1
-            ? '1 submitted tender is missing a submission deadline and is not shown. Add the deadline on Active Tenders to bring it back in.'
-            : `${undatedCount} submitted tenders are missing a submission deadline and are not shown. Add the deadlines on Active Tenders to bring them back in.`}
+            ? `1 submitted ${undatedNoun} is missing a submission deadline and is not shown. Add the deadline on Active Tenders to bring it back in.`
+            : `${undatedCount} submitted ${undatedNounPlural} are missing a submission deadline and are not shown. Add the deadlines on Active Tenders to bring them back in.`}
         </div>
       )}
 
       <div className="kpi-row">
-        <KPITile
-          label="Submitted"
-          value={loading ? 0 : stats.submitted}
-          hint={
-            !loading && stats.submitted > 0
-              ? `${formatCompactCurrency(stats.totalValue)} in value`
-              : undefined
-          }
-          icon={Send}
-          tone="info"
-          loading={loading}
-        />
-        <KPITile
-          label="Won"
-          value={loading ? 0 : stats.won}
-          hint={
-            !loading && stats.won > 0
-              ? `${formatCurrency(stats.wonFees)} in fees`
-              : undefined
-          }
-          icon={Trophy}
-          tone="success"
-          loading={loading}
-        />
-        <KPITile
-          label="Lost"
-          value={loading ? 0 : stats.lost}
-          icon={X}
-          tone="danger"
-          loading={loading}
-        />
-        <KPITile
-          label="Awaiting"
-          value={loading ? 0 : stats.awaiting}
-          icon={Clock}
-          tone="warning"
-          loading={loading}
-        />
-        <KPITile
-          label="Win Rate"
-          value={
-            loading
-              ? '-'
-              : stats.winRatePct == null
-                ? '-'
-                : `${stats.winRatePct}%`
-          }
-          hint={loading ? undefined : winRateHint}
-          icon={Target}
-          tone="brand"
-          loading={loading}
-        />
+        {isDpsView ? (
+          <>
+            <KPITile
+              label="Submitted"
+              value={loading ? 0 : stats.submitted}
+              icon={Send}
+              tone="info"
+              loading={loading}
+            />
+            <KPITile
+              label="Admitted"
+              value={loading ? 0 : stats.won}
+              hint={
+                !loading && stats.won > 0
+                  ? `${formatCurrency(stats.wonFees)} in fees`
+                  : undefined
+              }
+              icon={Trophy}
+              tone="success"
+              loading={loading}
+            />
+            <KPITile
+              label="Not Admitted"
+              value={loading ? 0 : stats.lost}
+              icon={X}
+              tone="danger"
+              loading={loading}
+            />
+            <KPITile
+              label="Awaiting"
+              value={loading ? 0 : stats.awaiting}
+              icon={Clock}
+              tone="warning"
+              loading={loading}
+            />
+            <KPITile
+              label="Pass Rate"
+              value={
+                loading
+                  ? '-'
+                  : stats.winRatePct == null
+                    ? '-'
+                    : `${stats.winRatePct}%`
+              }
+              hint={loading ? undefined : winRateHint}
+              icon={Target}
+              tone="brand"
+              loading={loading}
+            />
+          </>
+        ) : (
+          <>
+            <KPITile
+              label="Submitted"
+              value={loading ? 0 : stats.submitted}
+              hint={
+                !loading && stats.submitted > 0
+                  ? `${formatCompactCurrency(stats.totalValue)} in value`
+                  : undefined
+              }
+              icon={Send}
+              tone="info"
+              loading={loading}
+            />
+            <KPITile
+              label="Won"
+              value={loading ? 0 : stats.won}
+              hint={
+                !loading && stats.won > 0
+                  ? `${formatCurrency(stats.wonFees)} in fees`
+                  : undefined
+              }
+              icon={Trophy}
+              tone="success"
+              loading={loading}
+            />
+            <KPITile
+              label="Lost"
+              value={loading ? 0 : stats.lost}
+              icon={X}
+              tone="danger"
+              loading={loading}
+            />
+            <KPITile
+              label="Awaiting"
+              value={loading ? 0 : stats.awaiting}
+              icon={Clock}
+              tone="warning"
+              loading={loading}
+            />
+            <KPITile
+              label="Win Rate"
+              value={
+                loading
+                  ? '-'
+                  : stats.winRatePct == null
+                    ? '-'
+                    : `${stats.winRatePct}%`
+              }
+              hint={loading ? undefined : winRateHint}
+              icon={Target}
+              tone="brand"
+              loading={loading}
+            />
+          </>
+        )}
       </div>
 
       <StageTabs tabs={stageTabs} activeKey={activeMonth} onChange={setActiveMonth} />
