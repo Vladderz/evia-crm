@@ -13,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { PipelineProspect, DropReason, Client } from '../lib/types';
+import type { PipelineProspect, DropReason, Client, ProcurementType } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -35,6 +35,7 @@ import {
   type ProspectStatus,
 } from '../components/ProspectDrawer/ProspectDrawer';
 import { DropDialog } from '../components/DropDialog/DropDialog';
+import { TenderTypeDialog } from '../components/TenderTypeDialog/TenderTypeDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -513,13 +514,16 @@ export default function SalesPipeline() {
     }
   }
 
-  async function handlePromoteConfirm() {
+  async function handlePromoteConfirm(procurementType: ProcurementType) {
     if (!promoteTarget) return;
     const target = promoteTarget;
-    setPromoteTarget(null);
     try {
-      await api.post(`/pipeline/${target.id}/promote`);
-      toast.success(`${target.company_name} pushed to Active Tenders`);
+      await api.post(`/pipeline/${target.id}/promote`, { procurement_type: procurementType });
+      const successMessage = procurementType === 'dps'
+        ? 'Added to DPS in Active Tenders'
+        : `${target.company_name} pushed to Active Tenders`;
+      toast.success(successMessage);
+      setPromoteTarget(null);
       fetchData();
     } catch {
       toast.error('Failed to push to Active Tenders. Please try again.');
@@ -800,17 +804,17 @@ export default function SalesPipeline() {
         entityId={notesProspect?.id ?? null}
       />
 
-      <ConfirmDialog
+      <TenderTypeDialog
         open={promoteTarget !== null}
         title="Push to Active Tenders"
-        message={
+        description={
           promoteTarget
             ? `Push ${promoteTarget.company_name} to Active Tenders? This creates a client record (if needed) and a new tender at the Writing stage. The prospect row will be removed from this list.`
             : ''
         }
         confirmLabel="Push to Active"
+        onClose={() => setPromoteTarget(null)}
         onConfirm={handlePromoteConfirm}
-        onCancel={() => setPromoteTarget(null)}
       />
 
       <ConfirmDialog

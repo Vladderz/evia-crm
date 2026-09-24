@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../Modal/Modal';
 import { Button } from '../Button/Button';
+import { SegmentedControl } from '../SegmentedControl/SegmentedControl';
+import type { ProcurementType } from '../../lib/types';
 
 export type ReEngageTarget = 'pipeline' | 'active_tenders';
 
@@ -11,8 +13,16 @@ interface ReEngageDialogProps {
   /** Display name (company / tender title). */
   entityName: string;
   onClose: () => void;
-  onConfirm: (target: ReEngageTarget) => Promise<void> | void;
+  /** procurementType is only meaningful when source is 'prospect' and
+   *  target is 'active_tenders'; otherwise the caller should ignore it. */
+  onConfirm: (target: ReEngageTarget, procurementType: ProcurementType) => Promise<void> | void;
 }
+
+const TYPE_OPTIONS: { value: ProcurementType; label: string }[] = [
+  { value: 'tender',    label: 'Tender' },
+  { value: 'framework', label: 'Framework' },
+  { value: 'dps',       label: 'DPS' },
+];
 
 export function ReEngageDialog({
   open,
@@ -23,11 +33,13 @@ export function ReEngageDialog({
 }: ReEngageDialogProps) {
   const pipelineEnabled = source === 'prospect';
   const [target, setTarget] = useState<ReEngageTarget>('active_tenders');
+  const [procurementType, setProcurementType] = useState<ProcurementType>('tender');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setTarget(pipelineEnabled ? 'pipeline' : 'active_tenders');
+      setProcurementType('tender');
       setSubmitting(false);
     }
   }, [open, pipelineEnabled]);
@@ -35,11 +47,16 @@ export function ReEngageDialog({
   async function handleConfirm() {
     setSubmitting(true);
     try {
-      await onConfirm(target);
+      await onConfirm(target, procurementType);
     } finally {
       setSubmitting(false);
     }
   }
+
+  // Type only matters when we are promoting a dropped prospect back into
+  // Active Tenders. Re-engaging a dropped tender preserves its stored
+  // procurement_type on the server, so the control is hidden.
+  const showTypeControl = source === 'prospect' && target === 'active_tenders';
 
   const footer = (
     <>
@@ -84,6 +101,23 @@ export function ReEngageDialog({
               : 'Status reverts to Writing'
           }
         />
+        {showTypeControl && (
+          <div className="field" style={{ marginTop: 4 }}>
+            <label className="field-label">Type</label>
+            <SegmentedControl<ProcurementType>
+              options={TYPE_OPTIONS}
+              value={procurementType}
+              onChange={setProcurementType}
+              ariaLabel="Type"
+              fullWidth
+            />
+            {procurementType === 'dps' && (
+              <span className="field-hint">
+                Includes dynamic markets. Not counted in the win rate.
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );

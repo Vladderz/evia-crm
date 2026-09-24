@@ -10,7 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { NoMansLandRow, Tender, PipelineProspect } from '../lib/types';
+import type { NoMansLandRow, Tender, PipelineProspect, ProcurementType } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -192,23 +192,29 @@ export default function NoMansLand() {
 
   /* ------------- Re-engage ------------- */
 
-  async function handleReEngageConfirm(target: ReEngageTarget) {
+  async function handleReEngageConfirm(target: ReEngageTarget, procurementType: ProcurementType) {
     if (!reEngageTarget) return;
     const row = reEngageTarget;
     const name = row.company || row.tender_title || '#' + row.id;
+    // Only the prospect -> Active Tenders leg picks up the chosen type;
+    // every other leg is unchanged.
+    const isPromoteToActive = row.source === 'prospect' && target === 'active_tenders';
     try {
       if (row.source === 'tender') {
-        // Tenders only re-engage to Active Tenders.
+        // Tenders only re-engage to Active Tenders. Type is preserved.
         await api.post(`/tenders/${row.id}/re-engage`);
       } else {
         if (target === 'pipeline') {
           await api.post(`/pipeline/${row.id}/re-engage`);
         } else {
           // Prospect -> Active Tenders uses the existing /promote flow.
-          await api.post(`/pipeline/${row.id}/promote`);
+          await api.post(`/pipeline/${row.id}/promote`, { procurement_type: procurementType });
         }
       }
-      toast.success(`${name} re-engaged`);
+      const successMessage = isPromoteToActive && procurementType === 'dps'
+        ? 'Added to DPS in Active Tenders'
+        : `${name} re-engaged`;
+      toast.success(successMessage);
       setReEngageTarget(null);
       fetchData();
     } catch {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Calendar, CalendarDays, Plus, Send, Trash2, User } from 'lucide-react';
 import api from '../lib/api';
-import type { ProspectedContract } from '../lib/types';
+import type { ProspectedContract, ProcurementType } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -17,6 +17,7 @@ import { Button } from '../components/Button/Button';
 import { Input } from '../components/Input/Input';
 import { Drawer } from '../components/Drawer/Drawer';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { TenderTypeDialog } from '../components/TenderTypeDialog/TenderTypeDialog';
 
 /* -----------------------------------------------------------------
  * Types + helpers
@@ -199,6 +200,7 @@ export default function ContractsProspected() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [deleteTarget, setDeleteTarget] = useState<ProspectedContract | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<ProspectedContract | null>(null);
   const [pipelineIds, setPipelineIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -398,10 +400,16 @@ export default function ContractsProspected() {
     }
   }
 
-  async function handlePromote(contract: ProspectedContract) {
+  async function handlePromoteConfirm(procurementType: ProcurementType) {
+    if (!promoteTarget) return;
+    const target = promoteTarget;
     try {
-      await api.post(`/prospected/${contract.id}/promote`);
-      toast.success('Contract promoted to Active Tenders');
+      await api.post(`/prospected/${target.id}/promote`, { procurement_type: procurementType });
+      const successMessage = procurementType === 'dps'
+        ? 'Added to DPS in Active Tenders'
+        : 'Contract promoted to Active Tenders';
+      toast.success(successMessage);
+      setPromoteTarget(null);
       fetchData();
     } catch {
       toast.error('Failed to promote contract. Please try again.');
@@ -467,7 +475,7 @@ export default function ContractsProspected() {
           row={row}
           inPipeline={pipelineIds.has(row.id)}
           onAddToPipeline={handleAddToPipeline}
-          onPromote={handlePromote}
+          onPromote={r => setPromoteTarget(r)}
           onDelete={r => setDeleteTarget(r)}
         />
       ),
@@ -629,6 +637,19 @@ export default function ContractsProspected() {
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <TenderTypeDialog
+        open={promoteTarget !== null}
+        title="Promote to Active Tenders"
+        description={
+          promoteTarget
+            ? `Promote "${promoteTarget.title}" to Active Tenders. The contract row will be removed from this list.`
+            : ''
+        }
+        confirmLabel="Promote"
+        onClose={() => setPromoteTarget(null)}
+        onConfirm={handlePromoteConfirm}
       />
     </>
   );
