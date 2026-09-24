@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Drawer } from '../Drawer/Drawer';
 import { Input } from '../Input/Input';
 import { Textarea } from '../Textarea/Textarea';
@@ -74,12 +74,6 @@ const ASSIGNEE_OPTIONS = [
   { value: 'Both', label: 'Both' },
 ];
 
-function calcAutoFee(valueStr: string): string {
-  const v = parseFloat(valueStr);
-  if (!valueStr || Number.isNaN(v) || v <= 0) return '';
-  return String(Math.round(Math.max(v * 0.03, 2000)));
-}
-
 export function TenderDrawer({
   open,
   onClose,
@@ -96,31 +90,16 @@ export function TenderDrawer({
   }));
   const [titleError, setTitleError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const feeManuallyEdited = useRef(!!initial?.evia_fee);
 
   /* Reset whenever a new tender is loaded. */
   useEffect(() => {
     if (!open) return;
     setForm({ ...EMPTY, assigned_to: defaultAssignee, ...(initial ?? {}) });
     setTitleError(false);
-    feeManuallyEdited.current = !!initial?.evia_fee;
   }, [open, initial, defaultAssignee]);
 
   function update<K extends keyof TenderFormValues>(key: K, value: TenderFormValues[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
-  }
-
-  function handleValueChange(value: string) {
-    setForm(prev => {
-      const next = { ...prev, estimated_value: value };
-      if (!feeManuallyEdited.current) next.evia_fee = calcAutoFee(value);
-      return next;
-    });
-  }
-
-  function handleFeeChange(value: string) {
-    feeManuallyEdited.current = value !== '';
-    update('evia_fee', value);
   }
 
   function handleStatusChange(value: string) {
@@ -215,7 +194,7 @@ export function TenderDrawer({
                 step={1}
                 placeholder="0"
                 value={form.estimated_value}
-                onChange={e => handleValueChange(e.target.value)}
+                onChange={e => update('estimated_value', e.target.value)}
               />
             </div>
           </div>
@@ -228,14 +207,11 @@ export function TenderDrawer({
                 type="number"
                 min={0}
                 step={1}
-                placeholder="2000"
+                placeholder="0"
                 value={form.evia_fee}
-                onChange={e => handleFeeChange(e.target.value)}
+                onChange={e => update('evia_fee', e.target.value)}
               />
             </div>
-            <span className="field-hint">
-              Auto-calculated as 3% of value, min £2,000. Edit to override.
-            </span>
           </div>
         </div>
 
