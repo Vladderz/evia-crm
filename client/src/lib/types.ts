@@ -84,6 +84,8 @@ export interface NoMansLandRow {
   drop_note: string | null;
   dropped_at: string;
   last_contact: string | null;
+  /** Only present for tender rows; NULL for dropped prospects. */
+  procurement_type?: ProcurementType | null;
 }
 
 export interface Note {
@@ -116,6 +118,12 @@ export type TenderStatus =
   | 'won'
   | 'lost'
   | 'archived'
+
+/**
+ * Procurement type on tenders. 'dps' also covers dynamic markets and
+ * is surfaced / counted separately from 'tender' and 'framework'.
+ */
+export type ProcurementType = 'tender' | 'framework' | 'dps'
 
 /**
  * Canonical sales-pipeline stages. Labels for these values live in
@@ -178,6 +186,7 @@ export interface Tender {
   sector: string | null
   tender_url: string | null
   status: 'questionnaire_sent' | 'writing' | 'submitted' | 'won' | 'lost' | 'archived'
+  procurement_type: ProcurementType
   assigned_to: string | null
   notes: string | null
   /**

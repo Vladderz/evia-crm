@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { validateProcurementType } = require('../lib/procurementTypes');
 
 const router = express.Router();
 
@@ -239,6 +240,19 @@ router.post('/', async (req, res) => {
 
 // POST /api/prospected/:id/promote
 router.post('/:id/promote', async (req, res) => {
+  // Optional procurement_type on the request body. Missing / null / ''
+  // defaults to 'tender'; any other unrecognised value is a 400.
+  let procurementTypeVal;
+  const rawType = req.body && req.body.procurement_type;
+  if (rawType === undefined || rawType === null || rawType === '') {
+    procurementTypeVal = 'tender';
+  } else {
+    procurementTypeVal = validateProcurementType(rawType);
+    if (procurementTypeVal === null) {
+      return res.status(400).json({ error: 'Invalid procurement type' });
+    }
+  }
+
   try {
     const contractResult = await pool.query('SELECT * FROM prospected_contracts WHERE id = $1', [req.params.id]);
     if (!contractResult.rows[0]) {
@@ -251,10 +265,10 @@ router.post('/:id/promote', async (req, res) => {
     const assignedTo = userResult.rows[0] ? userResult.rows[0].name : null;
 
     const tenderResult = await pool.query(
-      `INSERT INTO tenders (title, tender_url, submission_deadline, status, assigned_to, created_by)
-       VALUES ($1, $2, $3, 'questionnaire_sent', $4, $5)
+      `INSERT INTO tenders (title, tender_url, submission_deadline, status, assigned_to, created_by, procurement_type)
+       VALUES ($1, $2, $3, 'questionnaire_sent', $4, $5, $6)
        RETURNING *`,
-      [contract.title, contract.url, contract.submission_deadline, assignedTo, req.session.userId]
+      [contract.title, contract.url, contract.submission_deadline, assignedTo, req.session.userId, procurementTypeVal]
     );
     const tender = tenderResult.rows[0];
 

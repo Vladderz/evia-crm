@@ -1,5 +1,9 @@
 const express = require('express');
 const pool = require('../db/pool');
+const {
+  PROCUREMENT_TYPE_LABELS,
+  validateProcurementType,
+} = require('../lib/procurementTypes');
 
 const router = express.Router();
 
@@ -354,11 +358,23 @@ router.post('/', async (req, res) => {
   const {
     client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
     portal, reference_number, sector, tender_url, status,
-    assigned_to, notes, awaiting_info, awaiting_info_note,
+    assigned_to, notes, awaiting_info, awaiting_info_note, procurement_type,
   } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
+  }
+
+  // procurement_type: missing / null / '' defaults to 'tender'; any
+  // other unrecognised value is a 400.
+  let procurementTypeVal;
+  if (procurement_type === undefined || procurement_type === null || procurement_type === '') {
+    procurementTypeVal = 'tender';
+  } else {
+    procurementTypeVal = validateProcurementType(procurement_type);
+    if (procurementTypeVal === null) {
+      return res.status(400).json({ error: 'Invalid procurement type' });
+    }
   }
 
   // awaiting_info only meaningful when status === 'writing'; force false
@@ -372,8 +388,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
          reference_number, sector, tender_url, status, assigned_to, notes, created_by,
-         awaiting_info, awaiting_info_note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         awaiting_info, awaiting_info_note, procurement_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [
         client_id || null,
@@ -393,6 +409,7 @@ router.post('/', async (req, res) => {
         req.session.userId,
         awaitingInfoVal,
         awaitingNoteVal,
+        procurementTypeVal,
       ]
     );
     const tender = result.rows[0];
@@ -439,6 +456,20 @@ router.put('/:id', async (req, res) => {
     const status             = b.status              || prev.status;
     const assignedTo         = 'assigned_to'         in b ? (b.assigned_to || null)        : prev.assigned_to;
     const notes              = 'notes'               in b ? (b.notes || null)              : prev.notes;
+
+    // procurement_type: if the key is absent, preserve prev. If present,
+    // it must be one of the allowed values - null / '' / anything else
+    // is a 400. Missing-becomes-default only applies on POST.
+    let procurementType;
+    if ('procurement_type' in b) {
+      procurementType = validateProcurementType(b.procurement_type);
+      if (procurementType === null) {
+        return res.status(400).json({ error: 'Invalid procurement type' });
+      }
+    } else {
+      procurementType = prev.procurement_type;
+    }
+
     // loss_note is captured by the Mark Lost row action; if status moves
     // away from 'lost' later, flush the note so it doesn't haunt the row.
     let lossNote;
@@ -482,10 +513,11 @@ router.put('/:id', async (req, res) => {
         notes               = $14,
         awaiting_info       = $15,
         awaiting_info_note  = $16,
-        loss_note           = $17
-       WHERE id = $18
+        loss_note           = $17,
+        procurement_type    = $18
+       WHERE id = $19
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, procurementType, req.params.id]
     );
 
     const tender = result.rows[0];
@@ -511,13 +543,16 @@ router.put('/:id', async (req, res) => {
       // Canonical labels live in client/src/lib/format.ts
       // (TENDER_STATUS_LABELS_LONG). Duplicated here because there is
       // no shared module across the client/server boundary - keep in
-      // sync on rename.
+      // sync on rename. DPS records read Admitted / Not Admitted in
+      // place of Won / Lost - based on the record's type after the
+      // update so a same-save type flip lands in the right vocabulary.
+      const isDps = tender.procurement_type === 'dps';
       const TENDER_STATUS_LABELS = {
         questionnaire_sent: 'Questionnaire Sent',
         writing: 'Writing',
         submitted: 'Submitted / Awaiting Result',
-        won: 'Won',
-        lost: 'Lost',
+        won: isDps ? 'Admitted' : 'Won',
+        lost: isDps ? 'Not Admitted' : 'Lost',
         archived: 'Archived',
       };
       const oldLabel = TENDER_STATUS_LABELS[prev.status] || prev.status;
@@ -525,6 +560,15 @@ router.put('/:id', async (req, res) => {
       await pool.query(
         `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
         [req.params.id, `Status changed from ${oldLabel} to ${newLabel}`, req.session.userId]
+      );
+    }
+
+    if (prev.procurement_type !== tender.procurement_type) {
+      const oldTypeLabel = PROCUREMENT_TYPE_LABELS[prev.procurement_type] || prev.procurement_type;
+      const newTypeLabel = PROCUREMENT_TYPE_LABELS[tender.procurement_type] || tender.procurement_type;
+      await pool.query(
+        `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
+        [req.params.id, `Type changed from ${oldTypeLabel} to ${newTypeLabel}`, req.session.userId]
       );
     }
 

@@ -29,7 +29,8 @@ router.get('/', async (req, res) => {
         t.drop_reason,
         t.drop_note,
         t.dropped_at,
-        t.updated_at AS last_contact
+        t.updated_at AS last_contact,
+        t.procurement_type
       FROM tenders t
       LEFT JOIN clients c ON t.client_id = c.id
       WHERE t.dropped_at IS NOT NULL
@@ -46,7 +47,8 @@ router.get('/', async (req, res) => {
         sp.drop_reason,
         sp.drop_note,
         sp.dropped_at,
-        sp.last_contact_date::timestamp AS last_contact
+        sp.last_contact_date::timestamp AS last_contact,
+        NULL::text AS procurement_type
       FROM sales_pipeline sp
       WHERE sp.dropped_at IS NOT NULL
     `;

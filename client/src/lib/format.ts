@@ -177,6 +177,66 @@ export function getStatusLabelLong(status: string | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------
+ * Procurement type
+ * ------------------------------------------------------------------
+ * Every tender row has a type. Tenders and frameworks live together in
+ * the primary view; DPS applications (also covering dynamic markets)
+ * live in their own view so their pass / fail outcomes never move the
+ * tender win rate.
+ *
+ * tenderStatusLabel / tenderStatusLabelLong return the type-aware
+ * label: 'won' / 'lost' read as Admitted / Not Admitted on DPS records.
+ * tenderStatusOptions rebuilds TENDER_STATUS_OPTIONS with those labels.
+ */
+
+export type ProcurementType = 'tender' | 'framework' | 'dps';
+
+export const PROCUREMENT_TYPE_LABELS: Record<ProcurementType, string> = {
+  tender:    'Tender',
+  framework: 'Framework',
+  dps:       'DPS',
+};
+
+export type TenderView = 'tenders' | 'dps';
+
+export function tenderViewOf(type: ProcurementType | null | undefined): TenderView {
+  return type === 'dps' ? 'dps' : 'tenders';
+}
+
+export function tenderStatusLabel(
+  status: string | null | undefined,
+  type: ProcurementType | null | undefined,
+): string {
+  if (!status) return '';
+  if (type === 'dps') {
+    if (status === 'won') return 'Admitted';
+    if (status === 'lost') return 'Not Admitted';
+  }
+  return TENDER_STATUS_LABELS[status] ?? status;
+}
+
+export function tenderStatusLabelLong(
+  status: string | null | undefined,
+  type: ProcurementType | null | undefined,
+): string {
+  if (!status) return '';
+  if (type === 'dps') {
+    if (status === 'won') return 'Admitted';
+    if (status === 'lost') return 'Not Admitted';
+  }
+  return TENDER_STATUS_LABELS_LONG[status] ?? status;
+}
+
+export function tenderStatusOptions(
+  type: ProcurementType | null | undefined,
+): { value: string; label: string }[] {
+  return TENDER_STATUS_OPTIONS.map(o => ({
+    value: o.value,
+    label: tenderStatusLabel(o.value, type),
+  }));
+}
+
+/* ------------------------------------------------------------------
  * Prospect (Sales Pipeline) status labels
  * ------------------------------------------------------------------ */
 

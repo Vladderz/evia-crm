@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { validateProcurementType } = require('../lib/procurementTypes');
 
 const router = express.Router();
 
@@ -362,6 +363,23 @@ router.post('/:id/advance', async (req, res) => {
 // POST /api/pipeline/:id/promote
 router.post('/:id/promote', async (req, res) => {
   const client = await pool.connect();
+
+  // Optional procurement_type on the request body. Missing / null / ''
+  // defaults to 'tender'; any other unrecognised value is a 400. Checked
+  // before we open the transaction so an invalid payload doesn't need a
+  // rollback.
+  let procurementTypeVal;
+  const rawType = req.body && req.body.procurement_type;
+  if (rawType === undefined || rawType === null || rawType === '') {
+    procurementTypeVal = 'tender';
+  } else {
+    procurementTypeVal = validateProcurementType(rawType);
+    if (procurementTypeVal === null) {
+      client.release();
+      return res.status(400).json({ error: 'Invalid procurement type' });
+    }
+  }
+
   try {
     await client.query('BEGIN');
 
@@ -422,8 +440,8 @@ router.post('/:id/promote', async (req, res) => {
     const tenderResult = await client.query(
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
-         reference_number, tender_url, status, assigned_to, created_by)
-       VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$8,'questionnaire_sent',$9,$10)
+         reference_number, tender_url, status, assigned_to, created_by, procurement_type)
+       VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$8,'questionnaire_sent',$9,$10,$11)
        RETURNING id`,
       [
         clientId,
@@ -436,6 +454,7 @@ router.post('/:id/promote', async (req, res) => {
         prospect.tender_url || null,
         prospect.assigned_to || null,
         req.session.userId,
+        procurementTypeVal,
       ]
     );
     const tenderId = tenderResult.rows[0].id;
