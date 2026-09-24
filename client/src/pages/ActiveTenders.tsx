@@ -217,7 +217,14 @@ function ValueCell({ value }: { value: number | null | undefined }) {
 
 function AwardCell({ row }: { row: Tender }) {
   if (!row.award_date) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
-  const rel = formatRelativeDays(row.award_date);
+  // Overdue / countdown suffix only applies to rows we are still
+  // working. Won, lost and archived have already resolved, so the
+  // suffix would just nag about a past date. Show the plain date.
+  const isLive =
+    row.status === 'questionnaire_sent'
+    || row.status === 'writing'
+    || row.status === 'submitted';
+  const rel = isLive ? formatRelativeDays(row.award_date) : null;
   if (!rel?.tone) {
     return <span style={{ whiteSpace: 'nowrap' }}>{formatDate(row.award_date)}</span>;
   }
