@@ -436,6 +436,7 @@ export default function ContractsProspected() {
       key: 'contract',
       header: 'Contract Name',
       width: 'flex',
+      minWidth: 320,
       maxWidth: 320,
       render: row => <ContractCell row={row} />,
     },

@@ -24,6 +24,13 @@ export interface Column<T> {
    * DataTable is set to layout="fixed".
    */
   width?: number | string | 'flex';
+  /**
+   * Minimum pixel width, only meaningful for columns without a fixed
+   * pixel width. Feeds into the table's min-width so that flexible
+   * columns cannot be squeezed to zero on narrow viewports. Default
+   * is 200 when omitted on a flexible column.
+   */
+  minWidth?: number;
   /** Hard cap on cell content width (used for truncation). */
   maxWidth?: number;
   align?: 'left' | 'right' | 'center';
@@ -32,6 +39,28 @@ export interface Column<T> {
   sortKey?: string;
   /** Apply font-mono with tabular-nums to cell content. */
   mono?: boolean;
+}
+
+/**
+ * Sum of every column's rendered floor width - fixed pixel widths for
+ * fixed columns, plus each flexible column's own minimum (or the 200px
+ * default). Used as the table's min-width so the table grows wider than
+ * its card and scrolls horizontally on narrow viewports, instead of
+ * silently squeezing flex columns to zero. Percentage / string widths
+ * fall back to the flexible-column floor since they cannot be summed
+ * in pixels.
+ */
+const FLEX_COLUMN_DEFAULT_MIN = 200;
+function computeTableMinWidth<T>(columns: Column<T>[]): number {
+  let total = 0;
+  for (const col of columns) {
+    if (typeof col.width === 'number') {
+      total += col.width;
+    } else {
+      total += col.minWidth ?? FLEX_COLUMN_DEFAULT_MIN;
+    }
+  }
+  return total;
 }
 
 export interface SortState {
@@ -431,7 +460,10 @@ export function DataTable<T>({
             className="dt-table"
             role="table"
             aria-label={ariaLabel}
-            style={layout === 'fixed' ? { tableLayout: 'fixed' } : undefined}
+            style={{
+              minWidth: computeTableMinWidth(columns),
+              ...(layout === 'fixed' ? { tableLayout: 'fixed' as const } : null),
+            }}
           >
             {layout === 'fixed' && (
               <colgroup>

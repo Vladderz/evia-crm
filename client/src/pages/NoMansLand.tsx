@@ -338,6 +338,7 @@ export default function NoMansLand() {
       key: 'company',
       header: 'Company',
       width: 'flex',
+      minWidth: 220,
       maxWidth: 220,
       render: row =>
         row.company ? (
@@ -362,6 +363,7 @@ export default function NoMansLand() {
       key: 'tender',
       header: 'Tender',
       width: 'flex',
+      minWidth: 280,
       maxWidth: 280,
       render: row =>
         row.tender_title ? (

@@ -887,6 +887,7 @@ export default function ActiveTenders() {
     key: 'tender',
     header: 'Tender',
     width: 'flex',
+    minWidth: 260,
     // In the DPS view the Value column is hidden. Widen the Tender
     // cap by the same 100px so the freed space is absorbed and no
     // dead zone appears at the right of the row.

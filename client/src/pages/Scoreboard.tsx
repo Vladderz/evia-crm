@@ -426,6 +426,7 @@ export default function Scoreboard() {
     key: 'tender',
     header: 'Tender',
     width: 'flex',
+    minWidth: 260,
     // DPS hides the Value column; widen the Tender cap by the same
     // amount so the freed space is absorbed and no dead zone appears.
     maxWidth: isDpsView ? 430 : 320,
