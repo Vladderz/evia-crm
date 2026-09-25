@@ -97,7 +97,7 @@ export function ReEngageDialog({
           label="Push to Active Tenders"
           hint={
             source === 'prospect'
-              ? 'Promotes to a client + new tender at Writing'
+              ? 'Promotes to a client + new tender at Info Gathering'
               : 'Status reverts to Writing'
           }
         />

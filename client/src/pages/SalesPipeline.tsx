@@ -809,7 +809,7 @@ export default function SalesPipeline() {
         title="Push to Active Tenders"
         description={
           promoteTarget
-            ? `Push ${promoteTarget.company_name} to Active Tenders? This creates a client record (if needed) and a new tender at the Writing stage. The prospect row will be removed from this list.`
+            ? `Push ${promoteTarget.company_name} to Active Tenders? This creates a client record (if needed) and a new tender at the Info Gathering stage. The prospect row will be removed from this list.`
             : ''
         }
         confirmLabel="Push to Active"
