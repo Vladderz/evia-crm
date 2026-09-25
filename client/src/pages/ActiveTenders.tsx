@@ -10,6 +10,7 @@ import {
   Pencil,
   PenLine,
   Plus,
+  PoundSterling,
   Send,
   StickyNote,
   Target,
@@ -1029,10 +1030,9 @@ export default function ActiveTenders() {
               loading={loading}
             />
             <KPITile
-              label="Fees in Play"
-              value={formatCompactCurrency(pipelineValues.total.fees)}
-              hint="No contract value"
-              icon={Layers}
+              label="Won Fees"
+              value={formatCurrency(stats.wonFees)}
+              icon={PoundSterling}
               tone="info"
               mono
               loading={loading}
@@ -1040,7 +1040,6 @@ export default function ActiveTenders() {
             <KPITile
               label="Admitted"
               value={loading ? 0 : stats.wonCount}
-              hint={`${formatCurrency(stats.wonFees)} in fees`}
               icon={Trophy}
               tone="success"
               loading={loading}
