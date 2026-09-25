@@ -1109,13 +1109,25 @@ body {
 }
 .dt-date-2line .dt-date-suffix { margin-left: 0; }
 
-/* Action column inline buttons (specced separately from generic Button) */
+/* Action column inline buttons (specced separately from generic Button).
+   Right-alignment comes from margin-left: auto on the first child rather
+   than justify-content: flex-end. When the buttons happen to exceed the
+   cell content-box width (long labels on some stage rows at laptop
+   viewport), justify-content: flex-end packs items to the end and spills
+   the overflow past the START edge of the flex box - i.e. leftward -
+   which the DataTable's horizontal scroll container cannot scroll to,
+   so the leading columns become unreachable. The auto-margin variant
+   collapses to 0 in the overflow case and lets the excess spill
+   rightward instead, into the scrollable area. Visual on wide widths
+   (where the buttons fit) is unchanged. */
 .dt-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  justify-content: flex-end;
   width: 100%;
+}
+.dt-actions > *:first-child {
+  margin-left: auto;
 }
 
 .dt-action {
