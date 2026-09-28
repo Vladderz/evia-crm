@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { BarChart3, Building2, CreditCard, FileText, PauseCircle, Search, TrendingUp } from 'lucide-react';
+import { BarChart3, Building2, CreditCard, FileText, PauseCircle, Search, TrendingUp, Wallet } from 'lucide-react';
 import { Sidebar, type SidebarNavItem, type SidebarUser } from '../Sidebar/Sidebar';
 import { TopBar } from '../TopBar/TopBar';
 
@@ -10,6 +10,7 @@ export const DEFAULT_NAV_ITEMS: SidebarNavItem[] = [
   { key: 'clients', to: '/clients', label: 'Client Book', icon: Building2 },
   { key: 'prospected', to: '/prospected', label: 'Contracts Prospected', icon: Search },
   { key: 'scoreboard', to: '/scoreboard', label: 'Scoreboard', icon: BarChart3 },
+  { key: 'income', to: '/income', label: 'Income', icon: Wallet },
   { key: 'no_mans_land', to: '/no-mans-land', label: "No Man's Land", icon: PauseCircle },
   { key: 'subscriptions', to: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
 ];
