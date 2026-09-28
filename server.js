@@ -16,6 +16,7 @@ const pipelineRoutes = require('./routes/pipeline');
 const noMansLandRoutes = require('./routes/no-mans-land');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const requireAuth = require('./middleware/requireAuth');
+const { ensureIncomeSchema } = require('./lib/ensureIncomeSchema');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -122,8 +123,21 @@ async function checkTenderResultsTable() {
   }
 }
 
-app.listen(PORT, () => {
-  console.log(`Evia CRM server running on port ${PORT}`);
-  checkTenderResultsTable();
-  cleanupExpiredProspected();
+async function runStartupSetup() {
+  try {
+    await ensureIncomeSchema(pool);
+  } catch (err) {
+    // ensureIncomeSchema already logs the specific failure; the
+    // catch here is a belt-and-braces guarantee that the server
+    // starts even if the Income setup blows up unexpectedly.
+    console.error('[startup] ensureIncomeSchema failed, continuing:', err.message);
+  }
+}
+
+runStartupSetup().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`Evia CRM server running on port ${PORT}`);
+    checkTenderResultsTable();
+    cleanupExpiredProspected();
+  });
 });

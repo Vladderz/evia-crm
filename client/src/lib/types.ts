@@ -187,6 +187,8 @@ export interface Tender {
   tender_url: string | null
   status: 'questionnaire_sent' | 'writing' | 'submitted' | 'won' | 'lost' | 'archived'
   procurement_type: ProcurementType
+  /** Stamped on the calendar day the tender enters 'won', cleared on leave. */
+  won_at?: string | null
   assigned_to: string | null
   notes: string | null
   /**

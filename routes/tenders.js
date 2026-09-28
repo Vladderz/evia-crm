@@ -207,7 +207,8 @@ router.post('/:id/re-engage', async (req, res) => {
         dropped_at = NULL,
         status = 'writing',
         awaiting_info = FALSE,
-        awaiting_info_note = NULL
+        awaiting_info_note = NULL,
+        won_at = CASE WHEN status = 'won' THEN NULL ELSE won_at END
        WHERE id = $1
        RETURNING *`,
       [req.params.id]
@@ -383,13 +384,21 @@ router.post('/', async (req, res) => {
   const awaitingInfoVal = isWriting ? !!awaiting_info : false;
   const awaitingNoteVal = isWriting ? (awaiting_info_note || null) : null;
 
+  // won_at is stamped at the moment the tender enters 'won'. Set on
+  // creation only if the row is inserted directly as Won (Sales Pipeline
+  // Promote always inserts as Info Gathering, so this branch fires only
+  // for the rare direct-Add-as-Won case).
+  const insertWonAtSql = (status || 'questionnaire_sent') === 'won'
+    ? `(now() AT TIME ZONE 'Europe/London')::date`
+    : `NULL`;
+
   try {
     const result = await pool.query(
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
          reference_number, sector, tender_url, status, assigned_to, notes, created_by,
-         awaiting_info, awaiting_info_note, procurement_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         awaiting_info, awaiting_info_note, procurement_type, won_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,${insertWonAtSql})
        RETURNING *`,
       [
         client_id || null,
@@ -495,6 +504,17 @@ router.put('/:id', async (req, res) => {
       awaitingInfoNote = 'awaiting_info_note' in b ? (b.awaiting_info_note || null) : (prev.awaiting_info_note ?? null);
     }
 
+    // won_at: stamped the moment status enters 'won', cleared when
+    // status leaves 'won'. No other path writes to this column.
+    let wonAtSql;
+    if (status === 'won' && prev.status !== 'won') {
+      wonAtSql = `(now() AT TIME ZONE 'Europe/London')::date`;
+    } else if (status !== 'won' && prev.status === 'won') {
+      wonAtSql = `NULL`;
+    } else {
+      wonAtSql = `won_at`;
+    }
+
     const result = await pool.query(
       `UPDATE tenders SET
         client_id           = $1,
@@ -514,7 +534,8 @@ router.put('/:id', async (req, res) => {
         awaiting_info       = $15,
         awaiting_info_note  = $16,
         loss_note           = $17,
-        procurement_type    = $18
+        procurement_type    = $18,
+        won_at              = ${wonAtSql}
        WHERE id = $19
        RETURNING *`,
       [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, procurementType, req.params.id]
