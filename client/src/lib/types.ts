@@ -148,6 +148,63 @@ export type SubscriptionCycle = 'monthly' | 'quarterly' | 'annual'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 export type SubscriptionCategory = 'AI Tools' | 'Infrastructure' | 'Productivity' | 'Other'
 
+export type InvoiceCategory = 'success_fee' | 'fixed_fee' | 'retainer' | 'other'
+export type InvoiceState = 'awaiting' | 'overdue' | 'paid' | 'void'
+
+/**
+ * Row shape returned by every /api/invoices endpoint: every column on
+ * invoices plus computed fields (total, tender join, paid-day counts
+ * and a derived state). NUMERIC columns arrive as strings from
+ * node-postgres and are converted with `Number(...)` at the call site,
+ * as the tender money fields are.
+ */
+export interface Invoice {
+  id: number
+  invoice_number: string | null
+  category: InvoiceCategory
+  tender_id: number | null
+  client_id: number | null
+  client_name: string
+  description: string
+  contract_label: string | null
+  net_amount: string | number
+  vat_amount: string | number
+  total: string | number
+  issue_date: string
+  due_date: string | null
+  paid_date: string | null
+  amount_received: string | number | null
+  tide_transaction_id: string | null
+  invoice_file: string | null
+  payment_evidence_file: string | null
+  notes: string | null
+  voided_at: string | null
+  void_reason: string | null
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  tender_title: string | null
+  tender_type: ProcurementType | null
+  tender_status: string | null
+  tender_won_at: string | null
+  days_to_pay: number | null
+  state: InvoiceState
+  days_overdue: number | null
+  days_until_due: number | null
+}
+
+/** Row shape returned by GET /api/invoices/to-invoice. */
+export interface ToInvoiceTender {
+  id: number
+  title: string
+  procurement_type: ProcurementType
+  evia_fee: string | number | null
+  award_date: string | null
+  won_at: string | null
+  client_id: number | null
+  client_name: string | null
+}
+
 export interface Subscription {
   id: number
   service_name: string

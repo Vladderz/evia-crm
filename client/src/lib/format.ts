@@ -294,3 +294,112 @@ export function getDropReasonLabel(reason: string | null | undefined): string {
   if (!reason) return '';
   return DROP_REASON_LABELS[reason] ?? reason;
 }
+
+/* ------------------------------------------------------------------
+ * Invoices
+ * ------------------------------------------------------------------ */
+
+export const INVOICE_CATEGORY_LABELS: Record<string, string> = {
+  success_fee: 'Success Fee',
+  fixed_fee:   'Fixed Fee',
+  retainer:    'Retainer',
+  other:       'Other',
+};
+
+/**
+ * Currency with pence. Used everywhere on the Income page for amounts
+ * (£1,000.00, £4,143.49). Accepts strings (NUMERIC columns arrive as
+ * strings from node-postgres) as well as numbers.
+ */
+const MONEY_FORMATTER = new Intl.NumberFormat('en-GB', {
+  style: 'currency',
+  currency: 'GBP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+export function formatMoney(value: number | string | null | undefined): string {
+  if (value == null || value === '') return '';
+  const n = typeof value === 'number' ? value : parseFloat(value);
+  if (!Number.isFinite(n)) return '';
+  return MONEY_FORMATTER.format(n);
+}
+
+/**
+ * Add whole days to a YYYY-MM-DD string without going through Date's
+ * local-tz arithmetic. Mirrors the server's addDaysYmd helper.
+ */
+export function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ymd;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** Today in Europe/London as YYYY-MM-DD. */
+export function todayLondon(): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+const MONTH_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const MONTH_ABBR = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/** "September 2026" from a YYYY-MM key. */
+export function formatMonthLongYear(monthKey: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!m) return monthKey;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return monthKey;
+  return `${MONTH_FULL[month - 1]} ${year}`;
+}
+
+/** "Sep 26" from a YYYY-MM key. */
+export function formatMonthShort(monthKey: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!m) return monthKey;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return monthKey;
+  return `${MONTH_ABBR[month - 1]} ${String(year).slice(-2)}`;
+}
+
+/** Extract the YYYY-MM prefix of a YYYY-MM-DD string. */
+export function monthKeyOf(ymd: string | null | undefined): string | null {
+  if (!ymd || typeof ymd !== 'string' || ymd.length < 7) return null;
+  return ymd.slice(0, 7);
+}
+
+/** Every month key from start (inclusive) to end (inclusive). */
+export function monthKeyRange(start: string, end: string): string[] {
+  const [ys, ms] = start.split('-').map(Number);
+  const [ye, me] = end.split('-').map(Number);
+  const out: string[] = [];
+  let y = ys;
+  let m = ms;
+  while (y < ye || (y === ye && m <= me)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+/** Current month key in Europe/London. */
+export function currentMonthKeyLondon(): string {
+  return todayLondon().slice(0, 7);
+}
