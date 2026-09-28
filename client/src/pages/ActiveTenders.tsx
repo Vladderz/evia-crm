@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
   Clock,
   FileText,
   Layers,
@@ -18,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { Client, Tender, DropReason, ProcurementType } from '../lib/types';
+import type { Client, Tender, DropReason, ProcurementType, Invoice, InvoiceCategory } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -44,6 +45,13 @@ import {
 import { DropDialog } from '../components/DropDialog/DropDialog';
 import { MarkLostDialog } from '../components/MarkLostDialog/MarkLostDialog';
 import { AwaitingInfoDialog } from '../components/AwaitingInfoDialog/AwaitingInfoDialog';
+import {
+  InvoiceDrawer,
+  type InvoiceFormValues,
+  type MarkSentSource,
+  type TenderPickerOption,
+} from '../components/InvoiceDrawer/InvoiceDrawer';
+import { MarkPaidDialog } from '../components/MarkPaidDialog/MarkPaidDialog';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -184,7 +192,7 @@ function TenderCell({ row, view }: { row: Tender; view: TenderView }) {
   );
 }
 
-function StatusCell({ row }: { row: Tender }) {
+function StatusCell({ row, invoice }: { row: Tender; invoice?: Invoice }) {
   const showAwaiting =
     (row.status === 'writing' || row.status === 'questionnaire_sent') &&
     row.awaiting_info === true;
@@ -192,6 +200,18 @@ function StatusCell({ row }: { row: Tender }) {
   // is_stale is server-computed and only ever true for status==='submitted'.
   // Row stays where it is; the badge is the whole surfacing mechanism.
   const showChase = row.status === 'submitted' && row.is_stale === true;
+
+  let invoiceBadge: { variant: BadgeVariant; label: string } | null = null;
+  if (invoice) {
+    if (invoice.state === 'paid') {
+      invoiceBadge = { variant: 'success', label: 'Paid' };
+    } else if (invoice.state === 'overdue') {
+      invoiceBadge = { variant: 'danger', label: 'Invoice Overdue' };
+    } else if (invoice.state === 'awaiting') {
+      invoiceBadge = { variant: 'warning', label: 'Invoice Sent' };
+    }
+  }
+
   return (
     <div className="status-stack">
       <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
@@ -206,6 +226,9 @@ function StatusCell({ row }: { row: Tender }) {
         <span title="Submitted more than 90 days ago with no result recorded - chase the buyer">
           <Badge variant="warning" withDot>Chase</Badge>
         </span>
+      )}
+      {invoiceBadge && (
+        <Badge variant={invoiceBadge.variant} withDot>{invoiceBadge.label}</Badge>
       )}
     </div>
   );
@@ -262,12 +285,15 @@ function AssignedCell({ row }: { row: Tender }) {
 
 interface ActionsCellProps {
   row: Tender;
+  invoice?: Invoice;
   onEdit: (t: Tender) => void;
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
   onMarkLost: (t: Tender) => void;
   onToggleAwaiting: (t: Tender) => void;
   onDrop: (t: Tender) => void;
+  onMarkInvoiceSent: (t: Tender) => void;
+  onMarkInvoicePaid: (inv: Invoice) => void;
 }
 
 /* Stage transitions are one-click. Mark Won stays one-click. Mark
@@ -276,13 +302,48 @@ interface ActionsCellProps {
  * available. Drop is always available. The funnel is
  * Info Gathering -> Writing -> Submitted; the buttons mirror
  * that direction (forward = ArrowRight, backward = ArrowLeft).
- * DPS records read Admitted / Not Admitted in place of Won / Lost. */
-function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwaiting, onDrop }: ActionsCellProps) {
+ * DPS records read Admitted / Not Admitted in place of Won / Lost.
+ * On Won rows an invoice button sits between Edit and Drop: Mark
+ * Invoice Sent if no invoice exists yet, Mark Paid if one is
+ * awaiting payment, nothing once it has been paid. */
+function ActionsCell({
+  row,
+  invoice,
+  onEdit,
+  onNotes,
+  onAdvance,
+  onMarkLost,
+  onToggleAwaiting,
+  onDrop,
+  onMarkInvoiceSent,
+  onMarkInvoicePaid,
+}: ActionsCellProps) {
   const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
   const awaitingOn = inActiveStage && row.awaiting_info === true;
   const isDps = row.procurement_type === 'dps';
   const markWonLabel = isDps ? 'Mark Admitted' : 'Mark Won';
   const markLostLabel = isDps ? 'Mark Not Admitted' : 'Mark Lost';
+
+  // Won rows carry an extra invoice action. No invoice: raise one.
+  // Awaiting / overdue: mark it paid. Paid: no button (accounting is
+  // done, but the badge still shows on the Status column).
+  let invoiceButton: React.ReactNode = null;
+  if (row.status === 'won') {
+    if (!invoice) {
+      invoiceButton = (
+        <Button variant="primary" size="sm" icon={Send} onClick={() => onMarkInvoiceSent(row)}>
+          Mark Invoice Sent
+        </Button>
+      );
+    } else if (invoice.state === 'awaiting' || invoice.state === 'overdue') {
+      invoiceButton = (
+        <Button variant="primary" size="sm" icon={CheckCircle2} onClick={() => onMarkInvoicePaid(invoice)}>
+          Mark Paid
+        </Button>
+      );
+    }
+  }
+
   return (
     <span
       className="dt-actions"
@@ -295,6 +356,8 @@ function ActionsCell({ row, onEdit, onNotes, onAdvance, onMarkLost, onToggleAwai
       <Button variant="ghost" size="sm" icon={Pencil} onClick={() => onEdit(row)}>
         Edit
       </Button>
+
+      {invoiceButton}
 
       {inActiveStage && (
         <Button
@@ -479,6 +542,12 @@ export default function ActiveTenders() {
   // stay accurate. Only the Archived tab reads this array.
   const [archivedTenders, setArchivedTenders] = useState<Tender[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  // Fetched separately from the main data so a failure here can never
+  // block the rest of the page - invoice awareness is a nice-to-have,
+  // Active Tenders must keep working exactly as before if the Income
+  // schema is missing or /api/invoices errors.
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesNextNumber, setInvoicesNextNumber] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -514,11 +583,30 @@ export default function ActiveTenders() {
   const [dropTarget, setDropTarget] = useState<Tender | null>(null);
   const [markLostTarget, setMarkLostTarget] = useState<Tender | null>(null);
   const [awaitingInfoTarget, setAwaitingInfoTarget] = useState<Tender | null>(null);
+  const [markInvoiceSentSource, setMarkInvoiceSentSource] = useState<MarkSentSource | null>(null);
+  const [markInvoicePaidTarget, setMarkInvoicePaidTarget] = useState<Invoice | null>(null);
+  const [invoiceDrawerError, setInvoiceDrawerError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  const fetchInvoices = useCallback(async () => {
+    // Best-effort side fetch: any failure is swallowed so the rest of
+    // the page keeps working exactly as before if /api/invoices is
+    // unavailable (Income schema not yet applied, network blip, ...).
+    try {
+      const [listRes, nextRes] = await Promise.all([
+        api.get('/invoices'),
+        api.get('/invoices/next-number'),
+      ]);
+      setInvoices(listRes.data);
+      setInvoicesNextNumber(nextRes.data?.next);
+    } catch {
+      /* silent */
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoadError(false);
@@ -535,6 +623,9 @@ export default function ActiveTenders() {
           a.company_name.localeCompare(b.company_name),
         ),
       );
+      // Kick off invoices separately so a failure there never leaks
+      // into loadError for the main list.
+      void fetchInvoices();
     } catch {
       setLoadError(true);
     } finally {
@@ -558,6 +649,55 @@ export default function ActiveTenders() {
     () => archivedTenders.filter(t => tenderViewOf(t.procurement_type) === view),
     [archivedTenders, view],
   );
+
+  /**
+   * For each tender: pick the earliest-issued unpaid non-void invoice
+   * if there is one; otherwise the most-recently-paid invoice. Powers
+   * the Status column badge and the Won-row invoice action.
+   */
+  const invoiceByTender = useMemo(() => {
+    const unpaidByTender = new Map<number, Invoice>();
+    const paidByTender = new Map<number, Invoice>();
+    for (const inv of invoices) {
+      if (inv.state === 'void') continue;
+      if (inv.tender_id == null) continue;
+      if (inv.paid_date) {
+        const ex = paidByTender.get(inv.tender_id);
+        if (!ex || (inv.paid_date ?? '') > (ex.paid_date ?? '')) {
+          paidByTender.set(inv.tender_id, inv);
+        }
+      } else {
+        const ex = unpaidByTender.get(inv.tender_id);
+        if (!ex || inv.issue_date < ex.issue_date) {
+          unpaidByTender.set(inv.tender_id, inv);
+        }
+      }
+    }
+    const map = new Map<number, Invoice>();
+    const ids = new Set<number>();
+    unpaidByTender.forEach((_, id) => ids.add(id));
+    paidByTender.forEach((_, id) => ids.add(id));
+    for (const id of ids) {
+      const unp = unpaidByTender.get(id);
+      if (unp) map.set(id, unp);
+      else map.set(id, paidByTender.get(id)!);
+    }
+    return map;
+  }, [invoices]);
+
+  const invoiceDrawerTenderOptions: TenderPickerOption[] = useMemo(() => {
+    return tenders
+      .filter(t => !t.dropped_at)
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        client_id: t.client_id,
+        client_name: t.client_name ?? null,
+        procurement_type: (t.procurement_type ?? 'tender') as ProcurementType,
+        evia_fee: t.evia_fee ?? null,
+      }));
+  }, [tenders]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {
@@ -875,6 +1015,80 @@ export default function ActiveTenders() {
     }
   }
 
+  function openMarkInvoiceSent(t: Tender) {
+    setInvoiceDrawerError(null);
+    setMarkInvoiceSentSource({
+      id: t.id,
+      title: t.title,
+      procurement_type: (t.procurement_type ?? 'tender') as ProcurementType,
+      evia_fee: t.evia_fee ?? null,
+      client_id: t.client_id,
+      client_name: t.client_name ?? null,
+    });
+  }
+
+  function closeInvoiceDrawer() {
+    setMarkInvoiceSentSource(null);
+    setInvoiceDrawerError(null);
+  }
+
+  async function handleSaveInvoice(values: InvoiceFormValues) {
+    setInvoiceDrawerError(null);
+    const payload = {
+      invoice_number: values.invoice_number || null,
+      category: values.category as InvoiceCategory,
+      tender_id: values.tender_id ? parseInt(values.tender_id, 10) : null,
+      client_id: values.client_id ? parseInt(values.client_id, 10) : null,
+      client_name: values.client_name,
+      description: values.description,
+      contract_label: values.contract_label || null,
+      net_amount: values.net_amount,
+      vat_amount: values.vat_amount || '0',
+      issue_date: values.issue_date || null,
+      due_date: values.due_date || null,
+      paid_date: values.paid_date || null,
+      amount_received: values.amount_received || null,
+      tide_transaction_id: values.tide_transaction_id || null,
+      invoice_file: values.invoice_file || null,
+      payment_evidence_file: values.payment_evidence_file || null,
+      notes: values.notes || null,
+    };
+    try {
+      const res = await api.post('/invoices', payload);
+      const num = res.data?.invoice_number ?? '';
+      toast.success(`${num || 'Invoice'} recorded`);
+      closeInvoiceDrawer();
+      void fetchInvoices();
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Something went wrong. Please try again.';
+      setInvoiceDrawerError(message);
+    }
+  }
+
+  async function handleMarkInvoicePaid(payload: {
+    paid_date: string;
+    amount_received: string;
+    tide_transaction_id: string;
+    payment_evidence_file: string;
+  }) {
+    if (!markInvoicePaidTarget) return;
+    const target = markInvoicePaidTarget;
+    try {
+      await api.put(`/invoices/${target.id}`, {
+        paid_date: payload.paid_date || null,
+        amount_received: payload.amount_received || null,
+        tide_transaction_id: payload.tide_transaction_id || null,
+        payment_evidence_file: payload.payment_evidence_file || null,
+      });
+      toast.success(`${target.invoice_number ?? 'Invoice'} marked paid`);
+      setMarkInvoicePaidTarget(null);
+      void fetchInvoices();
+    } catch {
+      toast.error('Failed to mark paid. Please try again.');
+    }
+  }
+
   /* ------------- Render ------------- */
 
   const filtersActive = !!search || !!assigned;
@@ -908,7 +1122,7 @@ export default function ActiveTenders() {
       key: 'status',
       header: 'Status',
       width: 160,
-      render: row => <StatusCell row={row} />,
+      render: row => <StatusCell row={row} invoice={invoiceByTender.get(row.id)} />,
     },
     {
       key: 'client',
@@ -979,12 +1193,15 @@ export default function ActiveTenders() {
       render: row => (
         <ActionsCell
           row={row}
+          invoice={invoiceByTender.get(row.id)}
           onEdit={openEdit}
           onNotes={t => openNotes({ id: t.id, title: t.title })}
           onAdvance={handleAdvance}
           onMarkLost={t => setMarkLostTarget(t)}
           onToggleAwaiting={handleToggleAwaiting}
           onDrop={t => setDropTarget(t)}
+          onMarkInvoiceSent={openMarkInvoiceSent}
+          onMarkInvoicePaid={inv => setMarkInvoicePaidTarget(inv)}
         />
       ),
     },
@@ -1246,6 +1463,25 @@ export default function ActiveTenders() {
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <InvoiceDrawer
+        open={markInvoiceSentSource !== null}
+        mode="mark_sent"
+        onClose={closeInvoiceDrawer}
+        onSave={handleSaveInvoice}
+        clients={clientOptions}
+        tenderOptions={invoiceDrawerTenderOptions}
+        sourceTender={markInvoiceSentSource ?? undefined}
+        nextNumber={invoicesNextNumber}
+        submitError={invoiceDrawerError}
+      />
+
+      <MarkPaidDialog
+        open={markInvoicePaidTarget !== null}
+        invoice={markInvoicePaidTarget}
+        onClose={() => setMarkInvoicePaidTarget(null)}
+        onConfirm={handleMarkInvoicePaid}
       />
     </>
   );
