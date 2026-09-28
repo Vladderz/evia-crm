@@ -67,6 +67,7 @@ app.use('/api/prospected', requireAuth, require('./routes/prospected'));
 app.use('/api/pipeline', requireAuth, pipelineRoutes);
 app.use('/api/no-mans-land', requireAuth, noMansLandRoutes);
 app.use('/api/subscriptions', requireAuth, subscriptionsRoutes);
+app.use('/api/invoices', requireAuth, require('./routes/invoices'));
 
 if (isProd) {
   const distPath = path.join(__dirname, 'client', 'dist');
