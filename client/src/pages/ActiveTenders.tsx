@@ -1034,25 +1034,27 @@ export default function ActiveTenders() {
 
   async function handleSaveInvoice(values: InvoiceFormValues) {
     setInvoiceDrawerError(null);
-    const payload = {
+    // client_name is only included when no client is selected; the
+    // server derives it from the picked client otherwise. contract_label,
+    // amount_received, tide_transaction_id, invoice_file and
+    // payment_evidence_file are never sent so their stored values
+    // survive every edit.
+    const payload: Record<string, unknown> = {
       invoice_number: values.invoice_number || null,
       category: values.category as InvoiceCategory,
       tender_id: values.tender_id ? parseInt(values.tender_id, 10) : null,
       client_id: values.client_id ? parseInt(values.client_id, 10) : null,
-      client_name: values.client_name,
       description: values.description,
-      contract_label: values.contract_label || null,
       net_amount: values.net_amount,
       vat_amount: values.vat_amount || '0',
       issue_date: values.issue_date || null,
       due_date: values.due_date || null,
       paid_date: values.paid_date || null,
-      amount_received: values.amount_received || null,
-      tide_transaction_id: values.tide_transaction_id || null,
-      invoice_file: values.invoice_file || null,
-      payment_evidence_file: values.payment_evidence_file || null,
       notes: values.notes || null,
     };
+    if (!values.client_id) {
+      payload.client_name = values.client_name;
+    }
     try {
       const res = await api.post('/invoices', payload);
       const num = res.data?.invoice_number ?? '';
@@ -1066,20 +1068,12 @@ export default function ActiveTenders() {
     }
   }
 
-  async function handleMarkInvoicePaid(payload: {
-    paid_date: string;
-    amount_received: string;
-    tide_transaction_id: string;
-    payment_evidence_file: string;
-  }) {
+  async function handleMarkInvoicePaid(payload: { paid_date: string }) {
     if (!markInvoicePaidTarget) return;
     const target = markInvoicePaidTarget;
     try {
       await api.put(`/invoices/${target.id}`, {
         paid_date: payload.paid_date || null,
-        amount_received: payload.amount_received || null,
-        tide_transaction_id: payload.tide_transaction_id || null,
-        payment_evidence_file: payload.payment_evidence_file || null,
       });
       toast.success(`${target.invoice_number ?? 'Invoice'} marked paid`);
       setMarkInvoicePaidTarget(null);

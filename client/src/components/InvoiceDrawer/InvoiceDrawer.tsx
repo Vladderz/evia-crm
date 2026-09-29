@@ -23,16 +23,11 @@ export interface InvoiceFormValues {
   client_id: string;
   client_name: string;
   description: string;
-  contract_label: string;
   net_amount: string;
   vat_amount: string;
   issue_date: string;
   due_date: string;
   paid_date: string;
-  amount_received: string;
-  tide_transaction_id: string;
-  invoice_file: string;
-  payment_evidence_file: string;
   notes: string;
 }
 
@@ -91,16 +86,11 @@ function emptyForm(): InvoiceFormValues {
     client_id: '',
     client_name: '',
     description: '',
-    contract_label: '',
     net_amount: '',
     vat_amount: '0.00',
     issue_date: todayLondon(),
     due_date: addDaysYmd(todayLondon(), 14),
     paid_date: '',
-    amount_received: '',
-    tide_transaction_id: '',
-    invoice_file: '',
-    payment_evidence_file: '',
     notes: '',
   };
 }
@@ -108,7 +98,6 @@ function emptyForm(): InvoiceFormValues {
 function invoiceToForm(inv: Invoice): InvoiceFormValues {
   const netStr = inv.net_amount == null ? '' : String(parseFloat(String(inv.net_amount)).toFixed(2));
   const vatStr = inv.vat_amount == null ? '0.00' : String(parseFloat(String(inv.vat_amount)).toFixed(2));
-  const arStr = inv.amount_received == null ? '' : String(parseFloat(String(inv.amount_received)).toFixed(2));
   return {
     invoice_number: inv.invoice_number ?? '',
     category: inv.category,
@@ -116,16 +105,11 @@ function invoiceToForm(inv: Invoice): InvoiceFormValues {
     client_id: inv.client_id != null ? String(inv.client_id) : '',
     client_name: inv.client_name ?? '',
     description: inv.description ?? '',
-    contract_label: inv.contract_label ?? '',
     net_amount: netStr,
     vat_amount: vatStr,
     issue_date: inv.issue_date ?? '',
     due_date: inv.due_date ?? '',
     paid_date: inv.paid_date ?? '',
-    amount_received: arStr,
-    tide_transaction_id: inv.tide_transaction_id ?? '',
-    invoice_file: inv.invoice_file ?? '',
-    payment_evidence_file: inv.payment_evidence_file ?? '',
     notes: inv.notes ?? '',
   };
 }
@@ -140,16 +124,11 @@ function markSentPrefill(src: MarkSentSource, nextNumber: string | undefined): I
     client_id: src.client_id != null ? String(src.client_id) : '',
     client_name: src.client_name ?? '',
     description: `Bid writing success fee: ${src.title}`,
-    contract_label: src.title,
     net_amount: fee,
     vat_amount: '0.00',
     issue_date: today,
     due_date: addDaysYmd(today, 14),
     paid_date: '',
-    amount_received: '',
-    tide_transaction_id: '',
-    invoice_file: '',
-    payment_evidence_file: '',
     notes: '',
   };
 }
@@ -233,14 +212,12 @@ export function InvoiceDrawer({
       if (!picked) return next;
       const t = tenderOptions.find(o => String(o.id) === picked);
       if (!t) return next;
-      // Fill client + client name + contract label only when they are
-      // empty, so a hand-typed value is never overwritten.
+      // Fill the client only when it is empty, so a hand-picked client
+      // is never overwritten.
       if (!next.client_id && t.client_id != null) next.client_id = String(t.client_id);
-      if (!next.client_name && t.client_name) next.client_name = t.client_name;
-      if (!next.contract_label && t.title) next.contract_label = t.title;
-      // In Add mode only, also fill the amount from the fee and the
-      // description from a standard template.
-      if (mode === 'add') {
+      // In Add and Mark sent modes, also fill the amount from the fee
+      // and the description from a standard template when empty.
+      if (mode === 'add' || mode === 'mark_sent') {
         if (!next.net_amount && t.evia_fee != null) {
           next.net_amount = String(parseFloat(String(t.evia_fee)).toFixed(2));
         }
@@ -254,7 +231,9 @@ export function InvoiceDrawer({
 
   function validate(): boolean {
     const next: Partial<Record<keyof InvoiceFormValues, string>> = {};
-    if (!form.client_name.trim()) next.client_name = 'Client name is required';
+    if (!form.client_id && !form.client_name.trim()) {
+      next.client_name = 'Client name is required';
+    }
     if (!form.description.trim()) next.description = 'Description is required';
     const net = parseFloat(form.net_amount);
     if (!Number.isFinite(net) || net < 0) next.net_amount = 'Amounts must be zero or more';
@@ -287,6 +266,9 @@ export function InvoiceDrawer({
     isEdit ? 'Edit income' :
     isMarkSent ? 'Mark invoice sent' :
     'Add income';
+  const drawerDescription = isEdit && invoice
+    ? `${invoice.invoice_number ?? 'No number'} · ${invoice.client_name}`
+    : undefined;
   const submitLabel =
     isEdit ? 'Save changes' :
     isMarkSent ? 'Mark invoice sent' :
@@ -312,9 +294,11 @@ export function InvoiceDrawer({
     return opts;
   })();
 
-  const invoiceNumberHint = nextNumber
+  const invoiceNumberHint = !isEdit && nextNumber
     ? `Next in sequence: ${nextNumber}`
     : undefined;
+
+  const showClientName = !form.client_id;
 
   const footer = (
     <>
@@ -344,7 +328,7 @@ export function InvoiceDrawer({
   );
 
   return (
-    <Drawer open={open} onClose={onClose} title={drawerTitle} footer={footer}>
+    <Drawer open={open} onClose={onClose} title={drawerTitle} description={drawerDescription} footer={footer}>
       <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
         <div className="field">
           <label className="field-label">Category</label>
@@ -358,10 +342,11 @@ export function InvoiceDrawer({
         </div>
 
         <Select
-          label="Linked tender"
+          label="Tender"
           value={form.tender_id || NO_TENDER_SENTINEL}
           onValueChange={handleTenderChange}
           options={tenderSelectOptions}
+          hint="Optional. Leave as No tender for odd jobs."
         />
 
         <ClientPicker
@@ -371,30 +356,24 @@ export function InvoiceDrawer({
           onChange={v => update('client_id', v)}
         />
 
-        <Input
-          label="Client name on invoice"
-          required
-          value={form.client_name}
-          hint={errors.client_name ? undefined : 'Exactly as it appears on the invoice'}
-          error={errors.client_name}
-          onChange={e => update('client_name', e.target.value)}
-        />
+        {showClientName && (
+          <Input
+            label="Client name"
+            required
+            value={form.client_name}
+            hint={errors.client_name ? undefined : "Not in Client Book? Type the client's name."}
+            error={errors.client_name}
+            onChange={e => update('client_name', e.target.value)}
+          />
+        )}
 
         <Textarea
           label="Description"
           rows={2}
           required
           value={form.description}
-          hint={errors.description ? undefined : "Name the tender or contract. 'Success fee' on its own isn't enough for HMRC."}
           error={errors.description}
           onChange={e => update('description', e.target.value)}
-        />
-
-        <Input
-          label="Tender or contract"
-          value={form.contract_label}
-          hint="Shown in the Sales Log download"
-          onChange={e => update('contract_label', e.target.value)}
         />
 
         <Input
@@ -464,58 +443,13 @@ export function InvoiceDrawer({
           />
         </div>
 
-        <div
-          className="field"
-          style={{
-            background: 'var(--surface-warm)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px 16px',
-            gap: 12,
-          }}
-        >
-          <span className="field-label">Payment</span>
-          <div className="drawer-row">
-            <Input
-              label="Date paid"
-              type="date"
-              value={form.paid_date}
-              error={errors.paid_date}
-              onChange={e => update('paid_date', e.target.value)}
-            />
-            <div className="field">
-              <label className="field-label">Amount received</label>
-              <div className="drawer-currency">
-                <span className="drawer-currency-prefix">£</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  placeholder={total > 0 ? total.toFixed(2) : '0.00'}
-                  value={form.amount_received}
-                  onChange={e => update('amount_received', e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <Input
-            label="Tide transaction ID"
-            value={form.tide_transaction_id}
-            onChange={e => update('tide_transaction_id', e.target.value)}
-          />
-          <Input
-            label="Payment evidence file"
-            value={form.payment_evidence_file}
-            hint="INV-005 [date received] Client Payment.png"
-            onChange={e => update('payment_evidence_file', e.target.value)}
-          />
-        </div>
-
         <Input
-          label="Invoice file"
-          value={form.invoice_file}
-          hint="INV-005 28-09-2026 Client.pdf"
-          onChange={e => update('invoice_file', e.target.value)}
+          label="Date paid"
+          type="date"
+          value={form.paid_date}
+          hint={errors.paid_date ? undefined : 'Leave blank until the money lands'}
+          error={errors.paid_date}
+          onChange={e => update('paid_date', e.target.value)}
         />
 
         <Textarea

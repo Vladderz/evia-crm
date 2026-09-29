@@ -9,12 +9,7 @@ interface MarkPaidDialogProps {
   open: boolean;
   invoice: Invoice | null;
   onClose: () => void;
-  onConfirm: (payload: {
-    paid_date: string;
-    amount_received: string;
-    tide_transaction_id: string;
-    payment_evidence_file: string;
-  }) => Promise<void> | void;
+  onConfirm: (payload: { paid_date: string }) => Promise<void> | void;
 }
 
 export function MarkPaidDialog({
@@ -23,48 +18,29 @@ export function MarkPaidDialog({
   onClose,
   onConfirm,
 }: MarkPaidDialogProps) {
-  const totalStr = invoice != null
-    ? String(parseFloat(String(invoice.total)).toFixed(2))
-    : '';
   const [paidDate, setPaidDate] = useState('');
-  const [amountReceived, setAmountReceived] = useState('');
-  const [tideId, setTideId] = useState('');
-  const [evidenceFile, setEvidenceFile] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setPaidDate(todayLondon());
-      setAmountReceived(totalStr);
-      setTideId('');
-      setEvidenceFile('');
+      setError(null);
       setSubmitting(false);
     }
-  }, [open, totalStr]);
+  }, [open]);
 
   async function handleConfirm() {
+    if (invoice && invoice.issue_date && paidDate && paidDate < invoice.issue_date) {
+      setError(`Date paid can't be before the issue date`);
+      return;
+    }
+    setError(null);
     setSubmitting(true);
     try {
-      await onConfirm({
-        paid_date: paidDate,
-        amount_received: amountReceived,
-        tide_transaction_id: tideId,
-        payment_evidence_file: evidenceFile,
-      });
+      await onConfirm({ paid_date: paidDate });
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  const totalNum = parseFloat(totalStr);
-  const receivedNum = parseFloat(amountReceived);
-  let differenceHint: string | null = null;
-  if (Number.isFinite(totalNum) && Number.isFinite(receivedNum) && receivedNum !== totalNum) {
-    const diff = Math.round((receivedNum - totalNum) * 100) / 100;
-    if (diff < 0) {
-      differenceHint = `${formatMoney(Math.abs(diff))} short of the invoice total`;
-    } else if (diff > 0) {
-      differenceHint = `${formatMoney(diff)} more than the invoice total`;
     }
   }
 
@@ -96,34 +72,11 @@ export function MarkPaidDialog({
         label="Date paid"
         type="date"
         value={paidDate}
-        onChange={e => setPaidDate(e.target.value)}
-      />
-      <div className="field">
-        <label className="field-label">Amount received</label>
-        <div className="drawer-currency">
-          <span className="drawer-currency-prefix">£</span>
-          <input
-            type="number"
-            min={0}
-            step={0.01}
-            placeholder={totalStr || '0.00'}
-            value={amountReceived}
-            onChange={e => setAmountReceived(e.target.value)}
-          />
-        </div>
-        {differenceHint && (
-          <span className="field-hint">{differenceHint}</span>
-        )}
-      </div>
-      <Input
-        label="Tide transaction ID"
-        value={tideId}
-        onChange={e => setTideId(e.target.value)}
-      />
-      <Input
-        label="Payment evidence file"
-        value={evidenceFile}
-        onChange={e => setEvidenceFile(e.target.value)}
+        error={error ?? undefined}
+        onChange={e => {
+          setPaidDate(e.target.value);
+          if (error) setError(null);
+        }}
       />
     </Modal>
   );
