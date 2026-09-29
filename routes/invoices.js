@@ -129,7 +129,9 @@ function compareYmd(a, b) {
 // return a validation error message or null if valid.
 function validateResolved(row, { requireIssue }) {
   if (!CATEGORIES.includes(row.category)) return 'Invalid category';
-  if (!row.client_name || !row.client_name.trim()) return 'Client name is required';
+  if (row.client_id == null && (!row.client_name || !row.client_name.trim())) {
+    return 'Client name is required';
+  }
   if (!row.description || !row.description.trim()) return 'Description is required';
 
   const net = parseMoney(row.net_amount);
@@ -274,9 +276,25 @@ router.post('/', async (req, res) => {
     const category = b.category;
     const tender_id = b.tender_id === '' || b.tender_id == null ? null : parseInt(b.tender_id, 10);
     const client_id = b.client_id === '' || b.client_id == null ? null : parseInt(b.client_id, 10);
-    const client_name = typeof b.client_name === 'string' ? b.client_name.trim() : '';
+
+    // When a client is picked, derive client_name from that client's
+    // company_name and ignore any client_name in the body. Otherwise
+    // fall back to the client_name sent by the form.
+    let client_name;
+    if (client_id != null) {
+      const { rows } = await pool.query(
+        'SELECT company_name FROM clients WHERE id = $1',
+        [client_id],
+      );
+      client_name = rows[0] ? rows[0].company_name : '';
+    } else {
+      client_name = typeof b.client_name === 'string' ? b.client_name.trim() : '';
+    }
+
     const description = typeof b.description === 'string' ? b.description.trim() : '';
-    const contract_label = trimOrNull(b.contract_label);
+    // The drawer no longer sends contract_label; the Sales Log falls
+    // back to the linked tender's title.
+    const contract_label = null;
     const net_amount = parseMoney(b.net_amount);
     const vat_amount = b.vat_amount === '' || b.vat_amount == null ? 0 : parseMoney(b.vat_amount);
     const issue_date = trimOrNull(b.issue_date);
@@ -285,11 +303,14 @@ router.post('/', async (req, res) => {
       due_date = addDaysYmd(issue_date, 14);
     }
     const paid_date = trimOrNull(b.paid_date);
-    let amount_received = b.amount_received === '' || b.amount_received == null
-      ? null : parseMoney(b.amount_received);
-    if (paid_date && amount_received === null) {
-      amount_received = (net_amount || 0) + (vat_amount || 0);
-      amount_received = Math.round(amount_received * 100) / 100;
+    let amount_received;
+    if ('amount_received' in b) {
+      amount_received = b.amount_received === '' || b.amount_received == null
+        ? null : parseMoney(b.amount_received);
+    } else if (paid_date) {
+      amount_received = Math.round(((net_amount || 0) + (vat_amount || 0)) * 100) / 100;
+    } else {
+      amount_received = null;
     }
     if (!paid_date) amount_received = null;
     const tide_transaction_id = trimOrNull(b.tide_transaction_id);
@@ -398,9 +419,35 @@ router.put('/:id', async (req, res) => {
     const category = 'category' in b ? b.category : prev.category;
     const tender_id = pickInt('tender_id', prev.tender_id);
     const client_id = pickInt('client_id', prev.client_id);
-    const client_name = pickRequiredText('client_name', prev.client_name);
+
+    // Only sync client_name from the clients table when the picked
+    // client actually changes to a real client. This protects the
+    // legal names stored on the seeded invoices from being flattened
+    // to the shorter Client Book display name during unrelated edits.
+    // When the picker is cleared to "No client", the drawer sends
+    // client_name; use that so the on-invoice name can be corrected.
+    let client_name = prev.client_name;
+    if ('client_id' in b && client_id !== prev.client_id && client_id != null) {
+      const { rows } = await pool.query(
+        'SELECT company_name FROM clients WHERE id = $1',
+        [client_id],
+      );
+      if (rows[0]) client_name = rows[0].company_name;
+    } else if (client_id == null && 'client_name' in b) {
+      const raw = b.client_name;
+      if (typeof raw === 'string') client_name = raw.trim();
+    }
+
     const description = pickRequiredText('description', prev.description);
-    const contract_label = pickText('contract_label', prev.contract_label);
+
+    // The drawer no longer sends contract_label. When the linked
+    // tender changes, drop the stored label so the Sales Log falls
+    // back to the new tender's title. Otherwise leave the stored
+    // value alone.
+    let contract_label = prev.contract_label;
+    if ('tender_id' in b && tender_id !== prev.tender_id) {
+      contract_label = null;
+    }
     const net_amount = 'net_amount' in b ? pickMoney('net_amount', prev.net_amount) : prev.net_amount;
     let vat_amount = 'vat_amount' in b ? pickMoney('vat_amount', prev.vat_amount) : prev.vat_amount;
     if (vat_amount == null) vat_amount = 0;
@@ -424,12 +471,15 @@ router.put('/:id', async (req, res) => {
     let amount_received;
     if ('amount_received' in b) {
       amount_received = pickMoney('amount_received', prev.amount_received);
+    } else if (paid_date) {
+      // The drawer and Mark Paid dialog no longer send amount_received;
+      // recompute from the current total so a paid invoice's received
+      // amount tracks the total when the amount is edited.
+      amount_received = Math.round(
+        ((parseMoney(net_amount) || 0) + (parseMoney(vat_amount) || 0)) * 100,
+      ) / 100;
     } else {
-      amount_received = prev.amount_received == null ? null : parseMoney(prev.amount_received);
-    }
-    if (paid_date && amount_received == null) {
-      amount_received = (parseMoney(net_amount) || 0) + (parseMoney(vat_amount) || 0);
-      amount_received = Math.round(amount_received * 100) / 100;
+      amount_received = null;
     }
     if (!paid_date) amount_received = null;
 
