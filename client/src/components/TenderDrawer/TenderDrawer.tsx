@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Drawer } from '../Drawer/Drawer';
 import { Input } from '../Input/Input';
 import { Textarea } from '../Textarea/Textarea';
@@ -45,6 +45,12 @@ interface TenderDrawerProps {
   /** Add-mode default for procurement_type. Ignored in Edit mode. */
   defaultProcurementType?: ProcurementType;
   onSave: (values: TenderFormValues) => Promise<void> | void;
+  /**
+   * Slot rendered directly below the top Type / Stage / Status / Chasing
+   * panel. Active Tenders uses this to slide in the invoice section in
+   * Edit mode. Left undefined by other callers.
+   */
+  belowTopGroup?: ReactNode;
 }
 
 const EMPTY: TenderFormValues = {
@@ -119,6 +125,7 @@ export function TenderDrawer({
   defaultAssignee = '',
   defaultProcurementType = 'tender',
   onSave,
+  belowTopGroup,
 }: TenderDrawerProps) {
   const isEdit = !!initial;
   const [form, setForm] = useState<TenderFormValues>(() => ({
@@ -294,6 +301,8 @@ export function TenderDrawer({
             )}
           </div>
         </div>
+
+        {belowTopGroup}
 
         <Input
           label="Tender URL"

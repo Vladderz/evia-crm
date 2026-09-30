@@ -54,13 +54,13 @@ import {
   type TenderPickerOption,
 } from '../components/InvoiceDrawer/InvoiceDrawer';
 import { MarkPaidDialog } from '../components/MarkPaidDialog/MarkPaidDialog';
+import { TenderInvoiceSummary } from '../components/shared/TenderInvoiceSummary';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
   formatCompactCurrency,
   formatCurrency,
   formatDate,
-  formatMoney,
   formatRelativeDays,
   isNotShortlisted,
   stageBadge,
@@ -462,6 +462,7 @@ function ExpandPanel({
   onNotes,
   onAdvance,
   onShortlist,
+  onMarkInvoiceSent,
   onEditInvoice,
   onMarkInvoicePaid,
 }: {
@@ -472,6 +473,7 @@ function ExpandPanel({
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
   onShortlist: (t: Tender) => void;
+  onMarkInvoiceSent: (t: Tender) => void;
   onEditInvoice: (inv: Invoice) => void;
   onMarkInvoicePaid: (inv: Invoice) => void;
 }) {
@@ -490,107 +492,16 @@ function ExpandPanel({
             : { label: markWonLabel, status: 'won' }
           : null;
 
-  const showInvoiceSection = invoice != null;
-  const invoicePaid = invoice?.state === 'paid';
-  const daysToPay =
-    invoice && invoicePaid && typeof invoice.days_to_pay === 'number'
-      ? invoice.days_to_pay === 0
-        ? 'Same day'
-        : `${invoice.days_to_pay} days`
-      : null;
-
   return (
     <>
-      {showInvoiceSection && invoice && (
-        <div style={{ marginBottom: 20 }}>
-          <div className="dt-expand-section-title">Invoice</div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 16,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                columnGap: 20,
-                rowGap: 6,
-                fontSize: 12,
-              }}
-            >
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Invoice: </span>
-                <span style={{ color: 'var(--text-secondary-v1)' }}>
-                  {invoice.invoice_number ?? 'No number'}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Amount: </span>
-                <span style={{ color: 'var(--text-secondary-v1)' }}>
-                  {formatMoney(invoice.total)}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Sent: </span>
-                <span style={{ color: 'var(--text-secondary-v1)' }}>
-                  {formatDate(invoice.issue_date)}
-                </span>
-              </div>
-              {!invoicePaid && invoice.due_date && (
-                <div>
-                  <span style={{ color: 'var(--text-tertiary)' }}>Due: </span>
-                  <span style={{ color: 'var(--text-secondary-v1)' }}>
-                    {formatDate(invoice.due_date)}
-                  </span>
-                </div>
-              )}
-              <div>
-                <span style={{ color: 'var(--text-tertiary)' }}>Paid: </span>
-                <span style={{ color: 'var(--text-secondary-v1)' }}>
-                  {invoice.paid_date ? formatDate(invoice.paid_date) : 'Not yet'}
-                </span>
-              </div>
-              {daysToPay && (
-                <div>
-                  <span style={{ color: 'var(--text-tertiary)' }}>Days to pay: </span>
-                  <span style={{ color: 'var(--text-secondary-v1)' }}>{daysToPay}</span>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'inline-flex', gap: 6 }}>
-              {!invoicePaid && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={CheckCircle2}
-                  onClick={() => onMarkInvoicePaid(invoice)}
-                >
-                  Mark Paid
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={Receipt}
-                onClick={() => onEditInvoice(invoice)}
-              >
-                Edit Invoice
-              </Button>
-            </div>
-          </div>
-          {otherInvoiceCount > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {otherInvoiceCount === 1
-                ? '1 more invoice on the Income page'
-                : `${otherInvoiceCount} more invoices on the Income page`}
-            </div>
-          )}
-        </div>
-      )}
+      <TenderInvoiceSummary
+        invoice={invoice}
+        otherInvoiceCount={otherInvoiceCount}
+        variant="expand"
+        onMarkInvoiceSent={() => onMarkInvoiceSent(row)}
+        onMarkInvoicePaid={onMarkInvoicePaid}
+        onEditInvoice={onEditInvoice}
+      />
 
       <div className="dt-expand-grid">
       <div>
@@ -1659,6 +1570,7 @@ export default function ActiveTenders() {
                 onNotes={t => openNotes({ id: t.id, title: t.title })}
                 onAdvance={handleAdvance}
                 onShortlist={t => setShortlistTarget(t)}
+                onMarkInvoiceSent={openMarkInvoiceSent}
                 onEditInvoice={openEditInvoice}
                 onMarkInvoicePaid={inv => setMarkInvoicePaidTarget(inv)}
               />
@@ -1703,6 +1615,30 @@ export default function ActiveTenders() {
         defaultAssignee={user?.name ?? ''}
         defaultProcurementType={defaultTypeForAdd}
         onSave={handleSave}
+        belowTopGroup={
+          editingTenderId !== null && (() => {
+            // Pull the current tender from the loaded rows so the
+            // Mark Invoice Sent prefill uses the last saved values,
+            // never the drawer's unsaved edits. Archived rows live
+            // in a separate list; check both.
+            const tender =
+              tenders.find(t => t.id === editingTenderId)
+              ?? archivedTenders.find(t => t.id === editingTenderId);
+            if (!tender) return null;
+            const rowInvoice = invoiceByTender.get(tender.id);
+            const totalCount = nonVoidInvoiceCountByTender.get(tender.id) ?? 0;
+            return (
+              <TenderInvoiceSummary
+                invoice={rowInvoice}
+                otherInvoiceCount={rowInvoice ? Math.max(0, totalCount - 1) : 0}
+                variant="drawer"
+                onMarkInvoiceSent={() => openMarkInvoiceSent(tender)}
+                onMarkInvoicePaid={inv => setMarkInvoicePaidTarget(inv)}
+                onEditInvoice={openEditInvoice}
+              />
+            );
+          })()
+        }
       />
 
       <DropDialog
