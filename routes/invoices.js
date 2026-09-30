@@ -687,7 +687,13 @@ router.put('/:id', async (req, res) => {
 
     if (invoice_number) {
       const c = await classifyNumber(db, invoice_number, { client_id, client_name }, idNum);
-      if (c.kind === 'crossClient' || c.kind === 'voidOnly') {
+      // The "number was voided" 409 only fires when the item is taking
+      // a number it did not already have. An item that keeps its own
+      // non-empty number is not reusing a void number: it always was
+      // that number and only its siblings happen to be void. Let it
+      // save as a solo item.
+      const keepingOwnNumber = prev.invoice_number === invoice_number;
+      if (c.kind === 'crossClient' || (c.kind === 'voidOnly' && !keepingOwnNumber)) {
         await db.query('ROLLBACK');
         return res.status(409).json({ error: conflictMessage(c.kind, invoice_number, c.otherClientName) });
       }
