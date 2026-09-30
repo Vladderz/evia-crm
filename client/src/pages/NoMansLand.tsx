@@ -64,6 +64,10 @@ function tenderToFormFromServer(t: Tender): Partial<TenderFormValues> {
     // uses the raw loadedType so an unloaded value can never be
     // overwritten.
     procurement_type: t.procurement_type ?? 'tender',
+    // Same fallback story as procurement_type: display 'single' if the
+    // server never returned a stage, and handleTenderSave omits it
+    // from the payload when the loaded value was missing.
+    bid_stage: t.bid_stage ?? 'single',
     awaiting_info: t.awaiting_info ?? false,
     awaiting_info_note: t.awaiting_info_note ?? '',
     assigned_to: t.assigned_to ?? '',
@@ -117,6 +121,7 @@ export default function NoMansLand() {
     initial: Partial<TenderFormValues>;
     id: number;
     loadedType: Tender['procurement_type'] | undefined;
+    loadedStage: Tender['bid_stage'] | undefined;
   } | null>(null);
   const [prospectDrawer, setProspectDrawer] = useState<{
     initial: Partial<ProspectFormValues>;
@@ -232,6 +237,7 @@ export default function NoMansLand() {
           initial: tenderToFormFromServer(res.data),
           id: row.id,
           loadedType: res.data.procurement_type,
+          loadedStage: res.data.bid_stage,
         });
       } else {
         const res = await api.get(`/pipeline/${row.id}`);
@@ -270,6 +276,13 @@ export default function NoMansLand() {
       && values.procurement_type !== tenderDrawer.loadedType
     ) {
       payload.procurement_type = values.procurement_type;
+    }
+    // bid_stage follows the same rule as procurement_type.
+    if (
+      tenderDrawer.loadedStage !== undefined
+      && values.bid_stage !== tenderDrawer.loadedStage
+    ) {
+      payload.bid_stage = values.bid_stage;
     }
     try {
       await api.put(`/tenders/${tenderDrawer.id}`, payload);

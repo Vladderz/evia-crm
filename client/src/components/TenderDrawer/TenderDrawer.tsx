@@ -8,7 +8,7 @@ import { Button } from '../Button/Button';
 import { SegmentedControl } from '../SegmentedControl/SegmentedControl';
 import { ClientPicker, type ClientOption } from '../shared/ClientPicker';
 import { tenderStatusOptions } from '../../lib/format';
-import type { ProcurementType, TenderStatus } from '../../lib/types';
+import type { BidStage, ProcurementType, TenderStatus } from '../../lib/types';
 
 export type { TenderStatus };
 // Re-export for callers that still import the legacy name from here.
@@ -28,6 +28,7 @@ export interface TenderFormValues {
   client_id: string;
   status: TenderStatus;
   procurement_type: ProcurementType;
+  bid_stage: BidStage;
   awaiting_info: boolean;
   awaiting_info_note: string;
   assigned_to: string;
@@ -60,6 +61,7 @@ const EMPTY: TenderFormValues = {
   client_id: '',
   status: 'questionnaire_sent',
   procurement_type: 'tender',
+  bid_stage: 'single',
   awaiting_info: false,
   awaiting_info_note: '',
   assigned_to: '',
@@ -71,6 +73,18 @@ const TYPE_OPTIONS: { value: ProcurementType; label: string }[] = [
   { value: 'framework', label: 'Framework' },
   { value: 'dps',       label: 'DPS' },
 ];
+
+const STAGE_OPTIONS: { value: BidStage; label: string }[] = [
+  { value: 'single', label: 'Single Stage' },
+  { value: 'psq',    label: 'PSQ' },
+  { value: 'itt',    label: 'ITT' },
+];
+
+const STAGE_HINTS: Record<BidStage, string> = {
+  single: 'One round: the bid goes in once.',
+  psq:    'While submitted, the row shows PSQ · Awaiting Shortlist.',
+  itt:    'Shortlisted. Runs through the normal stages to Won or Lost.',
+};
 
 const ADD_TITLES: Record<ProcurementType, string> = {
   tender:    'Add tender',
@@ -134,6 +148,17 @@ export function TenderDrawer({
     setForm(prev => ({ ...prev, [key]: value }));
   }
 
+  function handleTypeChange(value: ProcurementType) {
+    setForm(prev => {
+      const next = { ...prev, procurement_type: value };
+      // DPS applications are single round: hide the stage control and
+      // pin the value to 'single' so the row cannot silently carry
+      // over a leftover PSQ / ITT stage from a type flip.
+      if (value === 'dps') next.bid_stage = 'single';
+      return next;
+    });
+  }
+
   function handleStatusChange(value: string) {
     setForm(prev => {
       const next = { ...prev, status: value as TenderStatus };
@@ -166,6 +191,8 @@ export function TenderDrawer({
   const awaitingDisabled =
     form.status !== 'questionnaire_sent' && form.status !== 'writing';
 
+  const showStage = form.procurement_type !== 'dps';
+
   const addTitle = ADD_TITLES[form.procurement_type];
   const editTitle = EDIT_TITLES[form.procurement_type];
   const drawerTitle = isEdit ? editTitle : addTitle;
@@ -196,20 +223,76 @@ export function TenderDrawer({
       footer={footer}
     >
       <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
-        <div className="field">
-          <label className="field-label">Type</label>
-          <SegmentedControl<ProcurementType>
-            options={TYPE_OPTIONS}
-            value={form.procurement_type}
-            onChange={v => update('procurement_type', v)}
-            ariaLabel="Type"
-            fullWidth
-          />
-          {form.procurement_type === 'dps' && (
-            <span className="field-hint">
-              Includes dynamic markets. Not counted in the win rate.
-            </span>
+        <div className="drawer-group">
+          <div className="field">
+            <label className="field-label">Type</label>
+            <SegmentedControl<ProcurementType>
+              options={TYPE_OPTIONS}
+              value={form.procurement_type}
+              onChange={handleTypeChange}
+              ariaLabel="Type"
+              fullWidth
+            />
+            {form.procurement_type === 'dps' && (
+              <span className="field-hint">
+                Includes dynamic markets. Not counted in the win rate.
+              </span>
+            )}
+          </div>
+
+          {showStage && (
+            <div className="field">
+              <label className="field-label">Stage</label>
+              <SegmentedControl<BidStage>
+                options={STAGE_OPTIONS}
+                value={form.bid_stage}
+                onChange={v => update('bid_stage', v)}
+                ariaLabel="Stage"
+                fullWidth
+              />
+              <span className="field-hint">{STAGE_HINTS[form.bid_stage]}</span>
+            </div>
           )}
+
+          <Select
+            label="Status"
+            value={form.status}
+            onValueChange={handleStatusChange}
+            options={
+              // 'archived' is not a selectable stage. If the row is
+              // already archived (four legacy rows exist from the old
+              // auto-archive job), expose it once so the drawer can
+              // display and reclassify it - after picking any other
+              // value the option drops back out.
+              form.status === 'archived'
+                ? [
+                    ...tenderStatusOptions(form.procurement_type),
+                    { value: 'archived', label: 'Archived' },
+                  ]
+                : tenderStatusOptions(form.procurement_type)
+            }
+          />
+
+          <div
+            className="field"
+            style={{ opacity: awaitingDisabled ? 0.6 : 1, gap: 10 }}
+          >
+            <Switch
+              checked={form.awaiting_info}
+              onChange={v => update('awaiting_info', v)}
+              disabled={awaitingDisabled}
+              label="Chasing client for info"
+              hint="Available at Info Gathering and Writing"
+            />
+            {form.awaiting_info && !awaitingDisabled && (
+              <Input
+                label="Waiting on"
+                placeholder="e.g. insurance certificates"
+                value={form.awaiting_info_note}
+                onChange={e => update('awaiting_info_note', e.target.value)}
+              />
+            )}
+          </div>
         </div>
 
         <Input
@@ -310,56 +393,6 @@ export function TenderDrawer({
           value={form.client_id}
           onChange={v => update('client_id', v)}
         />
-
-        <Select
-          label="Status"
-          value={form.status}
-          onValueChange={handleStatusChange}
-          options={
-            // 'archived' is not a selectable stage. If the row is
-            // already archived (four legacy rows exist from the old
-            // auto-archive job), expose it once so the drawer can
-            // display and reclassify it - after picking any other
-            // value the option drops back out.
-            form.status === 'archived'
-              ? [
-                  ...tenderStatusOptions(form.procurement_type),
-                  { value: 'archived', label: 'Archived' },
-                ]
-              : tenderStatusOptions(form.procurement_type)
-          }
-        />
-
-        <div
-          className="field"
-          style={{
-            background: 'var(--surface-warm)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px 16px',
-            gap: 10,
-            opacity: awaitingDisabled ? 0.6 : 1,
-          }}
-        >
-          <Switch
-            checked={form.awaiting_info}
-            onChange={v => update('awaiting_info', v)}
-            disabled={awaitingDisabled}
-            label="Chasing client for info"
-            hint={
-              awaitingDisabled
-                ? 'Only available while status is Info Gathering or Writing'
-                : 'Pauses progress visibly until you have what you need'
-            }
-          />
-          {form.awaiting_info && !awaitingDisabled && (
-            <Input
-              placeholder="What are you chasing them for? (optional, shown in tooltip)"
-              value={form.awaiting_info_note}
-              onChange={e => update('awaiting_info_note', e.target.value)}
-            />
-          )}
-        </div>
 
         <Select
           label="Assigned to"

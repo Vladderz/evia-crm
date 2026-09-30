@@ -2386,6 +2386,17 @@ textarea.field-control {
   .drawer-row { grid-template-columns: 1fr; }
 }
 
+/* Panel group used at the top of the tender drawer to hold the Type,
+   Stage, Status and Chasing controls together. Existing tokens only. */
+.drawer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+}
+
 /* ================================================================
    SWITCH (custom toggle, used for Chasing)
    ================================================================ */

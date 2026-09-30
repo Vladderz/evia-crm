@@ -146,6 +146,10 @@ function tenderToForm(t: Tender): Partial<TenderFormValues> {
     // procurement_type from the payload if the loaded value is missing
     // so a record whose type failed to load can never be overwritten.
     procurement_type: t.procurement_type ?? 'tender',
+    // Same fallback story as procurement_type: display 'single' if the
+    // server never returned a stage, and handleSave omits bid_stage
+    // from the payload when the loaded value was missing.
+    bid_stage: t.bid_stage ?? 'single',
     awaiting_info: t.awaiting_info ?? false,
     awaiting_info_note: t.awaiting_info_note ?? '',
     assigned_to: t.assigned_to ?? '',
@@ -691,6 +695,10 @@ export default function ActiveTenders() {
   // not return one (or we are in Add mode). handleSave uses this so an
   // unloaded type can never be silently overwritten.
   const [editingLoadedType, setEditingLoadedType] = useState<Tender['procurement_type'] | undefined>(undefined);
+  // Same story for bid_stage: undefined = server did not return one
+  // (or we are in Add mode), so handleSave omits it from the payload
+  // rather than overwriting an unknown value.
+  const [editingLoadedStage, setEditingLoadedStage] = useState<Tender['bid_stage'] | undefined>(undefined);
   const drawerOpen = drawerInitial !== undefined;
 
   /* Notes panel + delete + drop */
@@ -987,12 +995,14 @@ export default function ActiveTenders() {
   function openAdd() {
     setEditingTenderId(null);
     setEditingLoadedType(undefined);
+    setEditingLoadedStage(undefined);
     setDrawerInitial(null);
   }
 
   function openEdit(t: Tender) {
     setEditingTenderId(t.id);
     setEditingLoadedType(t.procurement_type);
+    setEditingLoadedStage(t.bid_stage);
     setDrawerInitial(tenderToForm(t));
   }
 
@@ -1000,6 +1010,7 @@ export default function ActiveTenders() {
     setDrawerInitial(undefined);
     setEditingTenderId(null);
     setEditingLoadedType(undefined);
+    setEditingLoadedStage(undefined);
   }
 
   function openNotes(t: { id: number; title: string }) {
@@ -1046,6 +1057,16 @@ export default function ActiveTenders() {
       && values.procurement_type !== editingLoadedType
     ) {
       payload.procurement_type = values.procurement_type;
+    }
+    // bid_stage follows the same rule so an unloaded stage
+    // (editingLoadedStage === undefined) can never be overwritten.
+    if (editingTenderId === null) {
+      payload.bid_stage = values.bid_stage;
+    } else if (
+      editingLoadedStage !== undefined
+      && values.bid_stage !== editingLoadedStage
+    ) {
+      payload.bid_stage = values.bid_stage;
     }
     const newView = tenderViewOf(values.procurement_type);
     const loadedView = editingLoadedType !== undefined ? tenderViewOf(editingLoadedType) : undefined;
