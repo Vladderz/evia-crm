@@ -17,6 +17,7 @@ import {
   formatCompactCurrency,
   formatCurrency,
   formatDate,
+  isNotShortlisted,
   tenderStatusLabel,
   tenderViewOf,
   type TenderView,
@@ -115,8 +116,15 @@ function outcomeLabel(status: ScoreboardStatus, procurementType: Tender['procure
 interface ScoreboardStats {
   submitted: number;
   won: number;
+  /** Total lost rows, so the Lost column of the by-month table still
+   *  adds up to the raw count. Not the win-rate denominator. */
   lost: number;
+  /** Non-DPS PSQs that ended at Lost. Excluded from the win rate. */
+  notShortlisted: number;
   awaiting: number;
+  /** Submitted rows still waiting for a shortlist decision. */
+  awaitingShortlist: number;
+  /** Final-stage decisions: won + lost - notShortlisted, floor 0. */
   decidedTotal: number;
   winRatePct: number | null;
   totalValue: number;
@@ -127,7 +135,9 @@ function computeStats(rows: Tender[]): ScoreboardStats {
   let submitted = 0;
   let won = 0;
   let lost = 0;
+  let notShortlisted = 0;
   let awaiting = 0;
+  let awaitingShortlist = 0;
   let totalValue = 0;
   let wonFees = 0;
   for (const t of rows) {
@@ -138,13 +148,28 @@ function computeStats(rows: Tender[]): ScoreboardStats {
       wonFees += Number(t.evia_fee ?? 0);
     } else if (t.status === 'lost') {
       lost += 1;
+      if (isNotShortlisted(t)) notShortlisted += 1;
     } else if (t.status === 'submitted') {
       awaiting += 1;
+      if (t.bid_stage === 'psq' && t.procurement_type !== 'dps') {
+        awaitingShortlist += 1;
+      }
     }
   }
-  const decidedTotal = won + lost;
+  const decidedTotal = Math.max(0, won + lost - notShortlisted);
   const winRatePct = decidedTotal > 0 ? Math.round((100 * won) / decidedTotal) : null;
-  return { submitted, won, lost, awaiting, decidedTotal, winRatePct, totalValue, wonFees };
+  return {
+    submitted,
+    won,
+    lost,
+    notShortlisted,
+    awaiting,
+    awaitingShortlist,
+    decidedTotal,
+    winRatePct,
+    totalValue,
+    wonFees,
+  };
 }
 
 /* -----------------------------------------------------------------
@@ -204,6 +229,16 @@ function ClientNameCell({ row }: { row: TenderRow }) {
 }
 
 function OutcomeCell({ row }: { row: TenderRow }) {
+  // Non-DPS PSQ rows keep the same Awaiting / Lost variants but read
+  // as Awaiting Shortlist / Not Shortlisted so the intermediate stage
+  // is legible without a second badge.
+  const isPsq = row.bid_stage === 'psq' && row.procurement_type !== 'dps';
+  if (isPsq && row.status === 'submitted') {
+    return <Badge variant="warning" withDot>Awaiting Shortlist</Badge>;
+  }
+  if (isPsq && row.status === 'lost') {
+    return <Badge variant="danger" withDot>Not Shortlisted</Badge>;
+  }
   return (
     <Badge variant={OUTCOME_VARIANT[row.status]} withDot>
       {outcomeLabel(row.status, row.procurement_type)}
@@ -622,6 +657,11 @@ export default function Scoreboard() {
             <KPITile
               label="Lost"
               value={loading ? 0 : stats.lost}
+              hint={
+                !loading && stats.notShortlisted > 0
+                  ? `Including ${stats.notShortlisted} not shortlisted`
+                  : undefined
+              }
               icon={X}
               tone="danger"
               loading={loading}
@@ -629,6 +669,11 @@ export default function Scoreboard() {
             <KPITile
               label="Awaiting"
               value={loading ? 0 : stats.awaiting}
+              hint={
+                !loading && stats.awaitingShortlist > 0
+                  ? `${stats.awaitingShortlist} awaiting shortlist`
+                  : undefined
+              }
               icon={Clock}
               tone="warning"
               loading={loading}
