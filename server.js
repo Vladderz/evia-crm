@@ -17,6 +17,7 @@ const noMansLandRoutes = require('./routes/no-mans-land');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const requireAuth = require('./middleware/requireAuth');
 const { ensureIncomeSchema } = require('./lib/ensureIncomeSchema');
+const { ensureSharedInvoiceNumbers } = require('./lib/ensureSharedInvoiceNumbers');
 const { ensureBidStageColumn } = require('./lib/ensureBidStageColumn');
 
 const app = express();
@@ -134,6 +135,16 @@ async function runStartupSetup() {
     // starts even if the Income setup blows up unexpectedly.
     console.error('[startup] ensureIncomeSchema failed, continuing:', err.message);
   }
+  // Migration 022: drop the UNIQUE rule on invoices.invoice_number so
+  // several invoice rows can share one number. Wrapped in its own
+  // try / catch, and captures the return so the Leaves one-off below
+  // only runs when the rule is actually gone.
+  let sharedNumbers = { uniqueRuleGone: false };
+  try {
+    sharedNumbers = await ensureSharedInvoiceNumbers(pool);
+  } catch (err) {
+    console.error('[startup] ensureSharedInvoiceNumbers failed, continuing:', err.message);
+  }
   // Kept in its own try / catch, and after the income step so an
   // income-side failure cannot skip it, so a failure in one column
   // check can never block the other.
@@ -141,6 +152,18 @@ async function runStartupSetup() {
     await ensureBidStageColumn(pool);
   } catch (err) {
     console.error('[startup] ensureBidStageColumn failed, continuing:', err.message);
+  }
+  // One-off Leaves INV-007 merge. Only fires once the unique rule is
+  // gone (i.e. ensureSharedInvoiceNumbers succeeded), and is guarded
+  // internally so a repeat run is a no-op. Safe to delete once you have
+  // confirmed the merge in the CRM.
+  if (sharedNumbers.uniqueRuleGone) {
+    try {
+      const { fixLeavesInv007 } = require('./lib/fixLeavesInv007');
+      await fixLeavesInv007(pool);
+    } catch (err) {
+      console.error('[startup] fixLeavesInv007 failed, continuing:', err.message);
+    }
   }
 }
 
