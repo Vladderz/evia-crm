@@ -1739,6 +1739,7 @@ export default function ActiveTenders() {
         onSave={handleSaveInvoice}
         clients={clientOptions}
         tenderOptions={invoiceDrawerTenderOptions}
+        invoices={invoices}
         sourceTender={invoiceDrawerState?.mode === 'mark_sent' ? invoiceDrawerState.source : undefined}
         invoice={invoiceDrawerState?.mode === 'edit' ? invoiceDrawerState.invoice : undefined}
         nextNumber={invoicesNextNumber}

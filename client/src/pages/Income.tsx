@@ -1194,6 +1194,7 @@ export default function Income() {
         tenderOptions={tenderOptions}
         sourceTender={drawerState?.source}
         invoice={drawerState?.invoice}
+        invoices={invoices}
         nextNumber={nextNumber}
         submitError={drawerSubmitError}
       />

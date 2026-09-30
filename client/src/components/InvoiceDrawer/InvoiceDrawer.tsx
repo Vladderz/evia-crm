@@ -9,10 +9,16 @@ import { ClientPicker, type ClientOption } from '../shared/ClientPicker';
 import {
   INVOICE_CATEGORY_LABELS,
   addDaysYmd,
+  formatDate,
   formatMoney,
   todayLondon,
 } from '../../lib/format';
 import type { Invoice, InvoiceCategory, ProcurementType } from '../../lib/types';
+import {
+  buildInvoiceGroups,
+  openInvoicesForClient,
+  type InvoiceGroup,
+} from '../../lib/invoiceGroups';
 
 export type InvoiceDrawerMode = 'add' | 'mark_sent' | 'edit';
 
@@ -67,6 +73,13 @@ interface InvoiceDrawerProps {
   nextNumber?: string;
   /** Server error message to show at the bottom of the form. */
   submitError?: string | null;
+  /**
+   * The page's full invoice list. Powers the "Add to an existing
+   * invoice" flow in Mark sent and Add modes, the typed-number check
+   * in every mode, and the "Part of INV-007" note in Edit mode.
+   * Optional so pages that don't have the list handy still work.
+   */
+  invoices?: Invoice[];
 }
 
 const CATEGORY_OPTIONS: { value: InvoiceCategory; label: string }[] = [
@@ -140,6 +153,10 @@ function addPrefill(nextNumber: string | undefined): InvoiceFormValues {
   };
 }
 
+const EXISTING_INVOICE_MODE = 'existing';
+const NEW_INVOICE_MODE = 'new';
+type AddExistingMode = typeof NEW_INVOICE_MODE | typeof EXISTING_INVOICE_MODE;
+
 export function InvoiceDrawer({
   open,
   mode,
@@ -153,10 +170,16 @@ export function InvoiceDrawer({
   invoice,
   nextNumber,
   submitError,
+  invoices = [],
 }: InvoiceDrawerProps) {
   const [form, setForm] = useState<InvoiceFormValues>(emptyForm());
   const [errors, setErrors] = useState<Partial<Record<keyof InvoiceFormValues, string>>>({});
   const [saving, setSaving] = useState(false);
+  // "Add to an existing invoice" flow only applies in Add / Mark sent.
+  // The picked invoice's shared fields become read-only; the item's
+  // own fields (amount, description, notes) stay editable.
+  const [addExistingMode, setAddExistingMode] = useState<AddExistingMode>(NEW_INVOICE_MODE);
+  const [existingInvoiceKey, setExistingInvoiceKey] = useState<string>('');
   // Track whether the user has hand-edited the due date. Until they do,
   // it follows the issue date + 14 days.
   const dueDateManuallyEdited = useRef(false);
@@ -172,6 +195,8 @@ export function InvoiceDrawer({
       setForm(addPrefill(nextNumber));
       dueDateManuallyEdited.current = false;
     }
+    setAddExistingMode(NEW_INVOICE_MODE);
+    setExistingInvoiceKey('');
     setErrors({});
     setSaving(false);
   }, [mode, invoice, sourceTender, nextNumber]);
@@ -229,6 +254,112 @@ export function InvoiceDrawer({
     });
   }
 
+  const isEditMode = mode === 'edit';
+
+  // Same-client open invoices for the "Add to an existing invoice"
+  // flow. Uses the current form's picked client, so switching client
+  // rebuilds the list. In Edit mode the drawer never offers the flow.
+  const openInvoices: InvoiceGroup[] = (() => {
+    if (isEditMode) return [];
+    const cid = form.client_id ? parseInt(form.client_id, 10) : null;
+    const cname = form.client_name || '';
+    if (cid == null && !cname.trim()) return [];
+    return openInvoicesForClient(invoices, cid, cname);
+  })();
+
+  // Groups + item lookup for the typed-number check and the multi-item
+  // note in Edit mode.
+  const groups = buildInvoiceGroups(invoices);
+  const trimmedNumber = form.invoice_number.trim();
+  const excludeSelfId = isEditMode ? invoice?.id ?? null : null;
+  function isSameClientOf(g: InvoiceGroup): boolean {
+    const cid = form.client_id ? parseInt(form.client_id, 10) : null;
+    const cname = (form.client_name || '').trim().toLowerCase();
+    const first = g.items[0]!;
+    if (cid != null && first.client_id != null) return cid === first.client_id;
+    const gname = (first.client_name || '').trim().toLowerCase();
+    if (!gname || !cname) return false;
+    return gname === cname;
+  }
+  const numberCheck: {
+    kind: 'unused' | 'sameClient' | 'cross' | 'voidOnly';
+    group?: InvoiceGroup;
+    otherClientName?: string;
+  } = (() => {
+    if (!trimmedNumber) return { kind: 'unused' };
+    const withNumber = groups.filter(g => (g.number ?? '').trim() === trimmedNumber);
+    // Filter out the row currently being edited from its own group so
+    // typing the same number in Edit mode does not flag itself.
+    const filtered = withNumber
+      .map(g => ({
+        ...g,
+        items: excludeSelfId ? g.items.filter(i => i.id !== excludeSelfId) : g.items,
+      }))
+      .filter(g => g.items.length > 0);
+    const live = filtered.filter(g => g.state !== 'void');
+    if (live.length === 0) {
+      if (filtered.length > 0) return { kind: 'voidOnly' };
+      return { kind: 'unused' };
+    }
+    const other = live.find(g => !isSameClientOf(g));
+    if (other) return { kind: 'cross', otherClientName: other.clientName };
+    return { kind: 'sameClient', group: live[0] };
+  })();
+
+  // In Edit mode, the multi-item note tells the user which fields are
+  // shared. The group here uses the raw invoice (not filtered) because
+  // the note counts every sibling, including the item being edited.
+  const editGroup: InvoiceGroup | null = (() => {
+    if (!isEditMode || !invoice) return null;
+    return groups.find(g => g.items.some(i => i.id === invoice.id)) ?? null;
+  })();
+
+  const existingInvoiceOptions: { value: string; label: string }[] = openInvoices.map(g => {
+    const itemsBit = g.itemCount === 1 ? '1 item' : `${g.itemCount} items`;
+    const dateBit = g.issueDate ? formatDate(g.issueDate) : 'no date';
+    return {
+      value: g.key,
+      label: `${g.number ?? 'No number'}, ${dateBit}, ${formatMoney(g.total)}, ${itemsBit}`,
+    };
+  });
+
+  const existingLocked = addExistingMode === EXISTING_INVOICE_MODE && !!existingInvoiceKey;
+
+  function chooseExistingInvoice(key: string) {
+    setExistingInvoiceKey(key);
+    const g = openInvoices.find(x => x.key === key);
+    if (!g) return;
+    const first = g.items[0]!;
+    // Category defaults to the invoice's category when every item on
+    // it shares one; otherwise leave the current pick.
+    const categories = Array.from(new Set(g.items.map(i => i.category)));
+    setForm(prev => ({
+      ...prev,
+      invoice_number: g.number ?? '',
+      issue_date: g.issueDate ?? prev.issue_date,
+      due_date: g.dueDate ?? prev.due_date,
+      client_id: first.client_id != null ? String(first.client_id) : '',
+      client_name: first.client_name ?? prev.client_name,
+      category: categories.length === 1 ? categories[0]! : prev.category,
+    }));
+    dueDateManuallyEdited.current = true;
+    setErrors(prev => ({ ...prev, invoice_number: undefined }));
+  }
+
+  function handleAddExistingModeChange(next: AddExistingMode) {
+    setAddExistingMode(next);
+    if (next === NEW_INVOICE_MODE) {
+      setExistingInvoiceKey('');
+      setForm(prev => ({
+        ...prev,
+        invoice_number: nextNumber ?? prev.invoice_number,
+        issue_date: todayLondon(),
+        due_date: addDaysYmd(todayLondon(), 14),
+      }));
+      dueDateManuallyEdited.current = false;
+    }
+  }
+
   function validate(): boolean {
     const next: Partial<Record<keyof InvoiceFormValues, string>> = {};
     if (!form.client_id && !form.client_name.trim()) {
@@ -261,6 +392,10 @@ export function InvoiceDrawer({
   const isEdit = mode === 'edit';
   const isMarkSent = mode === 'mark_sent';
   const isVoided = !!invoice?.voided_at;
+  const showAddExistingToggle =
+    !isEdit && openInvoices.length > 0;
+  const numberBlocked = numberCheck.kind === 'cross' || numberCheck.kind === 'voidOnly';
+  const saveDisabled = saving || numberBlocked;
 
   const drawerTitle =
     isEdit ? 'Edit income' :
@@ -336,6 +471,7 @@ export function InvoiceDrawer({
         size="md"
         onClick={() => handleSubmit()}
         loading={saving}
+        disabled={saveDisabled}
         type="submit"
       >
         {submitLabel}
@@ -346,6 +482,47 @@ export function InvoiceDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={drawerTitle} description={drawerDescription} footer={footer}>
       <form onSubmit={handleSubmit} noValidate style={{ display: 'contents' }}>
+        {isEdit && editGroup && editGroup.itemCount > 1 && (
+          <div
+            style={{
+              padding: '10px 12px',
+              background: 'var(--surface-muted)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 13,
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            {`Part of ${editGroup.number ?? 'this invoice'}: ${editGroup.itemCount} items, ${formatMoney(editGroup.total)}. Number, client, dates and payment details apply to the whole invoice.`}
+          </div>
+        )}
+
+        {showAddExistingToggle && (
+          <div className="field">
+            <label className="field-label">Invoice</label>
+            <SegmentedControl<AddExistingMode>
+              options={[
+                { value: NEW_INVOICE_MODE, label: 'New invoice' },
+                { value: EXISTING_INVOICE_MODE, label: 'Add to existing invoice' },
+              ]}
+              value={addExistingMode}
+              onChange={handleAddExistingModeChange}
+              ariaLabel="Invoice mode"
+              fullWidth
+            />
+            {addExistingMode === EXISTING_INVOICE_MODE && (
+              <div style={{ marginTop: 8 }}>
+                <Select
+                  label="Existing invoice"
+                  value={existingInvoiceKey}
+                  onValueChange={chooseExistingInvoice}
+                  options={existingInvoiceOptions}
+                  placeholder="Pick an open invoice"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field">
           <label className="field-label">Category</label>
           <SegmentedControl<InvoiceCategory>
@@ -395,7 +572,21 @@ export function InvoiceDrawer({
         <Input
           label="Invoice number"
           value={form.invoice_number}
-          hint={invoiceNumberHint}
+          readOnly={existingLocked}
+          hint={
+            numberCheck.kind === 'sameClient' && numberCheck.group
+              ? `This adds the item to ${trimmedNumber} (${numberCheck.group.itemCount} items, ${formatMoney(numberCheck.group.total)})`
+              : existingLocked
+                ? `Set by ${trimmedNumber || 'the invoice you picked'}`
+                : invoiceNumberHint
+          }
+          error={
+            numberCheck.kind === 'cross'
+              ? `${trimmedNumber} is already used for ${numberCheck.otherClientName ?? 'another client'}.`
+              : numberCheck.kind === 'voidOnly'
+                ? `${trimmedNumber} was voided. Numbers are never reused.`
+                : undefined
+          }
           onChange={e => update('invoice_number', e.target.value)}
         />
 
@@ -448,6 +639,8 @@ export function InvoiceDrawer({
             type="date"
             required
             value={form.issue_date}
+            readOnly={existingLocked}
+            hint={existingLocked ? `Set by ${trimmedNumber || 'the invoice you picked'}` : undefined}
             error={errors.issue_date}
             onChange={e => handleIssueDateChange(e.target.value)}
           />
@@ -455,6 +648,8 @@ export function InvoiceDrawer({
             label="Due date"
             type="date"
             value={form.due_date}
+            readOnly={existingLocked}
+            hint={existingLocked ? `Set by ${trimmedNumber || 'the invoice you picked'}` : undefined}
             onChange={e => handleDueDateChange(e.target.value)}
           />
         </div>
