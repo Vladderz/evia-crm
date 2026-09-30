@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import api from '../lib/api';
-import type { Client, Tender, DropReason, ProcurementType, Invoice, InvoiceCategory } from '../lib/types';
+import type { BidStage, Client, Tender, DropReason, ProcurementType, Invoice, InvoiceCategory } from '../lib/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { PageHeader } from '../components/PageHeader/PageHeader';
@@ -710,11 +710,19 @@ export default function ActiveTenders() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [assigned, setAssigned] = useState<string | undefined>(undefined);
+  // Bid-stage filter, only meaningful in the Tenders and Frameworks
+  // view. Kept in React state (URL is deliberately left out to match
+  // the assignee filter's shape). Reset on switch into DPS.
+  const [stageFilter, setStageFilter] = useState<BidStage | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function switchView(nextView: TenderView) {
     setView(nextView);
     setExpandedId(null);
+    // DPS applications are single round, so the stage filter is
+    // hidden there. Clear it so switching back to Tenders and
+    // Frameworks starts fresh.
+    if (nextView === 'dps') setStageFilter(undefined);
   }
 
   /* Drawer */
@@ -1008,8 +1016,15 @@ export default function ActiveTenders() {
 
   const filtered = useMemo(() => {
     const source = stage === 'archived' ? scopedArchived : scopedTenders;
-    return applyRowFilters(source);
-  }, [scopedTenders, scopedArchived, stage, applyRowFilters]);
+    const base = applyRowFilters(source);
+    // Stage filter is layered on top so applyRowFilters stays reusable
+    // for otherViewMatches - the cross-view hint deliberately ignores
+    // it. Only Tenders and Frameworks respects the filter; DPS view
+    // resets the value to undefined on switchView so this is really
+    // a no-op there.
+    if (view !== 'tenders' || !stageFilter) return base;
+    return base.filter(t => t.bid_stage === stageFilter);
+  }, [scopedTenders, scopedArchived, stage, applyRowFilters, view, stageFilter]);
 
   /* Rows in the other view that would pass the current filters - used
    * when a search is active and this view is empty. Same predicate,
@@ -1031,6 +1046,7 @@ export default function ActiveTenders() {
   function clearFilters() {
     setSearch('');
     setAssigned(undefined);
+    setStageFilter(undefined);
   }
 
   function toggleExpand(row: Tender) {
@@ -1328,7 +1344,7 @@ export default function ActiveTenders() {
 
   /* ------------- Render ------------- */
 
-  const filtersActive = !!search || !!assigned;
+  const filtersActive = !!search || !!assigned || !!stageFilter;
   const clientOptions: TenderClientOption[] = clients.map(c => ({
     id: c.id,
     name: c.company_name,
@@ -1597,6 +1613,21 @@ export default function ActiveTenders() {
             { value: 'Both', label: 'Both' },
           ]}
         />
+        {!isDpsView && (
+          <Select
+            value={stageFilter ?? 'all'}
+            onValueChange={v => setStageFilter(v === 'all' ? undefined : (v as BidStage))}
+            placeholder="All Stages"
+            width={160}
+            ariaLabel="Filter by stage"
+            options={[
+              { value: 'all',    label: 'All Stages' },
+              { value: 'single', label: 'Single Stage' },
+              { value: 'psq',    label: 'PSQ' },
+              { value: 'itt',    label: 'ITT' },
+            ]}
+          />
+        )}
         {filtersActive && <FilterBar.Clear onClick={clearFilters} />}
       </FilterBar>
 
