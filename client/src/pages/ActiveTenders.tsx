@@ -874,7 +874,10 @@ export default function ActiveTenders() {
   }, [invoices]);
 
   const invoiceDrawerTenderOptions: TenderPickerOption[] = useMemo(() => {
-    return tenders
+    // Active plus archived tenders. Invoicing a tender at any status is
+    // allowed (we sometimes send an invoice before submission and
+    // sometimes long after archive), so the picker offers the full set.
+    return [...tenders, ...archivedTenders]
       .filter(t => !t.dropped_at)
       .map(t => ({
         id: t.id,
@@ -885,7 +888,7 @@ export default function ActiveTenders() {
         procurement_type: (t.procurement_type ?? 'tender') as ProcurementType,
         evia_fee: t.evia_fee ?? null,
       }));
-  }, [tenders]);
+  }, [tenders, archivedTenders]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {

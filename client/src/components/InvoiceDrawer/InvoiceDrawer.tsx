@@ -280,9 +280,25 @@ export function InvoiceDrawer({
 
   const tenderSelectOptions = (() => {
     const opts: { value: string; label: string }[] = [{ value: NO_TENDER_SENTINEL, label: 'No tender' }];
+    // In Edit mode the invoice may point at a tender the caller did not
+    // include (archived, dropped, or otherwise off the current page's
+    // list). Synthesise an option for it so saving an edit can never
+    // silently unlink the invoice from its tender.
+    const merged: TenderPickerOption[] = tenderOptions.slice();
+    if (isEdit && invoice?.tender_id != null && !merged.some(t => t.id === invoice.tender_id)) {
+      merged.push({
+        id: invoice.tender_id,
+        title: invoice.tender_title ?? `Tender #${invoice.tender_id}`,
+        status: invoice.tender_status ?? 'archived',
+        client_id: invoice.client_id ?? null,
+        client_name: invoice.client_name ?? null,
+        procurement_type: (invoice.tender_type ?? 'tender') as ProcurementType,
+        evia_fee: null,
+      });
+    }
     const won: TenderPickerOption[] = [];
     const other: TenderPickerOption[] = [];
-    for (const t of tenderOptions) {
+    for (const t of merged) {
       (t.status === 'won' ? won : other).push(t);
     }
     won.sort((a, b) => a.title.localeCompare(b.title));
