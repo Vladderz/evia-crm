@@ -197,6 +197,18 @@ export const PROCUREMENT_TYPE_LABELS: Record<ProcurementType, string> = {
   dps:       'DPS',
 };
 
+export type BidStage = 'single' | 'psq' | 'itt';
+
+/**
+ * Labels for the bid_stage column. Kept alongside the other tender
+ * dictionaries so drawer, badges and dialogs pull from one place.
+ */
+export const BID_STAGE_LABELS: Record<BidStage, string> = {
+  single: 'Single Stage',
+  psq:    'PSQ',
+  itt:    'ITT',
+};
+
 export type TenderView = 'tenders' | 'dps';
 
 export function tenderViewOf(type: ProcurementType | null | undefined): TenderView {
@@ -234,6 +246,60 @@ export function tenderStatusOptions(
     value: o.value,
     label: tenderStatusLabel(o.value, type),
   }));
+}
+
+/**
+ * Minimal shape the stage helpers work with. Kept structural so both
+ * Tender rows and No Man's Land rows can be passed through directly
+ * without a mapping step.
+ */
+interface StageInput {
+  procurement_type?: ProcurementType | null;
+  bid_stage?: BidStage | null;
+  status?: string | null;
+}
+
+type StageBadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'neutral';
+
+/**
+ * Stage marker shown next to the status badge. Returns null when the
+ * row is DPS or single-stage; those never carry a stage badge.
+ */
+export function stageBadge(
+  tender: StageInput,
+): { label: string; variant: StageBadgeVariant } | null {
+  if (tender.procurement_type === 'dps') return null;
+  const stage = tender.bid_stage;
+  if (!stage || stage === 'single') return null;
+  const status = tender.status;
+  if (stage === 'psq') {
+    if (status === 'lost') return { label: 'PSQ · Not Shortlisted', variant: 'danger' };
+    if (status === 'submitted') return { label: 'PSQ · Awaiting Shortlist', variant: 'warning' };
+    return { label: 'PSQ', variant: 'brand' };
+  }
+  if (stage === 'itt') {
+    if (
+      status === 'questionnaire_sent'
+      || status === 'writing'
+      || status === 'submitted'
+    ) {
+      return { label: 'ITT · Shortlisted', variant: 'success' };
+    }
+    return { label: 'ITT', variant: 'brand' };
+  }
+  return null;
+}
+
+/**
+ * True for a non-DPS PSQ that ended at Lost - i.e. was not shortlisted
+ * for the ITT. Used to keep these rows out of the win rate.
+ */
+export function isNotShortlisted(tender: StageInput): boolean {
+  return (
+    tender.status === 'lost'
+    && tender.bid_stage === 'psq'
+    && tender.procurement_type !== 'dps'
+  );
 }
 
 /* ------------------------------------------------------------------

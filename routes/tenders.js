@@ -4,6 +4,10 @@ const {
   PROCUREMENT_TYPE_LABELS,
   validateProcurementType,
 } = require('../lib/procurementTypes');
+const {
+  BID_STAGE_LABELS,
+  validateBidStage,
+} = require('../lib/bidStages');
 
 const router = express.Router();
 
@@ -238,6 +242,76 @@ router.post('/:id/re-engage', async (req, res) => {
   }
 });
 
+// POST /api/tenders/:id/shortlist
+// Promote a submitted PSQ into an ITT. The row moves back to Info
+// Gathering with bid_stage = 'itt' so it runs through the normal
+// stages again as the invitation to tender. The ITT deadline is
+// optional at this point; leave it blank and edit it in later. A
+// single system note records both the PSQ deadline (as it stood
+// before the change) and the new ITT deadline (or a placeholder).
+router.post('/:id/shortlist', async (req, res) => {
+  const { itt_deadline } = req.body || {};
+  try {
+    const current = await pool.query('SELECT * FROM tenders WHERE id = $1', [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Tender not found' });
+    const tender = current.rows[0];
+
+    if (
+      tender.status !== 'submitted'
+      || tender.bid_stage !== 'psq'
+      || tender.dropped_at != null
+    ) {
+      return res.status(400).json({ error: 'Only a submitted PSQ can be shortlisted' });
+    }
+
+    const ittDeadline = itt_deadline || null;
+
+    const result = await pool.query(
+      `UPDATE tenders SET
+        status              = 'questionnaire_sent',
+        bid_stage           = 'itt',
+        submission_deadline = $1,
+        awaiting_info       = FALSE,
+        awaiting_info_note  = NULL
+       WHERE id = $2
+       RETURNING *`,
+      [ittDeadline, req.params.id]
+    );
+    const updated = result.rows[0];
+
+    // Dates as DD/MM/YYYY in Europe/London. Uses the same locale
+    // shortcut as the re-engage note.
+    const formatDayMonthYear = (value) => {
+      if (!value) return null;
+      const d = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('en-GB', {
+        timeZone: 'Europe/London',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      });
+    };
+    const psqLabel = formatDayMonthYear(tender.submission_deadline) || 'not recorded';
+    const ittLabel = formatDayMonthYear(ittDeadline) || 'not set yet';
+    const systemNote =
+      `Shortlisted for the ITT. PSQ deadline was ${psqLabel}. ITT deadline ${ittLabel}.`;
+    await pool.query(
+      `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
+      [req.params.id, systemNote, req.session.userId]
+    );
+
+    await logActivity(req.session.userId, 'shortlisted tender', 'tender', updated.id, {
+      title: updated.title,
+      psq_deadline: tender.submission_deadline,
+      itt_deadline: ittDeadline,
+    });
+
+    return res.json(updated);
+  } catch (err) {
+    console.error('Shortlist tender error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/tenders
 router.get('/', async (req, res) => {
   const { view } = req.query;
@@ -359,7 +433,7 @@ router.post('/', async (req, res) => {
   const {
     client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date,
     portal, reference_number, sector, tender_url, status,
-    assigned_to, notes, awaiting_info, awaiting_info_note, procurement_type,
+    assigned_to, notes, awaiting_info, awaiting_info_note, procurement_type, bid_stage,
   } = req.body;
 
   if (!title) {
@@ -375,6 +449,18 @@ router.post('/', async (req, res) => {
     procurementTypeVal = validateProcurementType(procurement_type);
     if (procurementTypeVal === null) {
       return res.status(400).json({ error: 'Invalid procurement type' });
+    }
+  }
+
+  // bid_stage: missing / null / '' defaults to 'single'; any other
+  // unrecognised value is a 400. Same rules as procurement_type.
+  let bidStageVal;
+  if (bid_stage === undefined || bid_stage === null || bid_stage === '') {
+    bidStageVal = 'single';
+  } else {
+    bidStageVal = validateBidStage(bid_stage);
+    if (bidStageVal === null) {
+      return res.status(400).json({ error: 'Invalid stage' });
     }
   }
 
@@ -397,8 +483,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO tenders
         (client_id, title, buyer, estimated_value, evia_fee, submission_deadline, award_date, portal,
          reference_number, sector, tender_url, status, assigned_to, notes, created_by,
-         awaiting_info, awaiting_info_note, procurement_type, won_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,${insertWonAtSql})
+         awaiting_info, awaiting_info_note, procurement_type, bid_stage, won_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,${insertWonAtSql})
        RETURNING *`,
       [
         client_id || null,
@@ -419,6 +505,7 @@ router.post('/', async (req, res) => {
         awaitingInfoVal,
         awaitingNoteVal,
         procurementTypeVal,
+        bidStageVal,
       ]
     );
     const tender = result.rows[0];
@@ -479,6 +566,19 @@ router.put('/:id', async (req, res) => {
       procurementType = prev.procurement_type;
     }
 
+    // bid_stage: same "present in body" merge as procurement_type. Any
+    // unrecognised value, including null, is a 400. Missing-becomes-
+    // default only applies on POST.
+    let bidStage;
+    if ('bid_stage' in b) {
+      bidStage = validateBidStage(b.bid_stage);
+      if (bidStage === null) {
+        return res.status(400).json({ error: 'Invalid stage' });
+      }
+    } else {
+      bidStage = prev.bid_stage;
+    }
+
     // loss_note is captured by the Mark Lost row action; if status moves
     // away from 'lost' later, flush the note so it doesn't haunt the row.
     let lossNote;
@@ -535,10 +635,11 @@ router.put('/:id', async (req, res) => {
         awaiting_info_note  = $16,
         loss_note           = $17,
         procurement_type    = $18,
+        bid_stage           = $19,
         won_at              = ${wonAtSql}
-       WHERE id = $19
+       WHERE id = $20
        RETURNING *`,
-      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, procurementType, req.params.id]
+      [clientId, title, buyer, estimatedValue, eviaFee, submissionDeadline, awardDate, portal, referenceNumber, sector, tenderUrl, status, assignedTo, notes, awaitingInfo, awaitingInfoNote, lossNote, procurementType, bidStage, req.params.id]
     );
 
     const tender = result.rows[0];
@@ -567,13 +668,16 @@ router.put('/:id', async (req, res) => {
       // sync on rename. DPS records read Admitted / Not Admitted in
       // place of Won / Lost - based on the record's type after the
       // update so a same-save type flip lands in the right vocabulary.
+      // Non-DPS records at bid_stage 'psq' read "Not Shortlisted" for
+      // Lost so the PSQ vocabulary flows through into the note.
       const isDps = tender.procurement_type === 'dps';
+      const isPsq = !isDps && tender.bid_stage === 'psq';
       const TENDER_STATUS_LABELS = {
         questionnaire_sent: 'Questionnaire Sent',
         writing: 'Writing',
         submitted: 'Submitted / Awaiting Result',
         won: isDps ? 'Admitted' : 'Won',
-        lost: isDps ? 'Not Admitted' : 'Lost',
+        lost: isDps ? 'Not Admitted' : (isPsq ? 'Not Shortlisted' : 'Lost'),
         archived: 'Archived',
       };
       const oldLabel = TENDER_STATUS_LABELS[prev.status] || prev.status;
@@ -590,6 +694,15 @@ router.put('/:id', async (req, res) => {
       await pool.query(
         `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
         [req.params.id, `Type changed from ${oldTypeLabel} to ${newTypeLabel}`, req.session.userId]
+      );
+    }
+
+    if (prev.bid_stage !== tender.bid_stage) {
+      const oldStageLabel = BID_STAGE_LABELS[prev.bid_stage] || prev.bid_stage;
+      const newStageLabel = BID_STAGE_LABELS[tender.bid_stage] || tender.bid_stage;
+      await pool.query(
+        `INSERT INTO tender_notes (tender_id, note, note_type, created_by) VALUES ($1, $2, 'system', $3)`,
+        [req.params.id, `Stage changed from ${oldStageLabel} to ${newStageLabel}`, req.session.userId]
       );
     }
 

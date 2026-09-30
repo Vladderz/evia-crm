@@ -17,6 +17,7 @@ const noMansLandRoutes = require('./routes/no-mans-land');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const requireAuth = require('./middleware/requireAuth');
 const { ensureIncomeSchema } = require('./lib/ensureIncomeSchema');
+const { ensureBidStageColumn } = require('./lib/ensureBidStageColumn');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -132,6 +133,14 @@ async function runStartupSetup() {
     // catch here is a belt-and-braces guarantee that the server
     // starts even if the Income setup blows up unexpectedly.
     console.error('[startup] ensureIncomeSchema failed, continuing:', err.message);
+  }
+  // Kept in its own try / catch, and after the income step so an
+  // income-side failure cannot skip it, so a failure in one column
+  // check can never block the other.
+  try {
+    await ensureBidStageColumn(pool);
+  } catch (err) {
+    console.error('[startup] ensureBidStageColumn failed, continuing:', err.message);
   }
 }
 

@@ -86,6 +86,8 @@ export interface NoMansLandRow {
   last_contact: string | null;
   /** Only present for tender rows; NULL for dropped prospects. */
   procurement_type?: ProcurementType | null;
+  /** Only present for tender rows; NULL for dropped prospects. */
+  bid_stage?: BidStage | null;
 }
 
 export interface Note {
@@ -124,6 +126,14 @@ export type TenderStatus =
  * is surfaced / counted separately from 'tender' and 'framework'.
  */
 export type ProcurementType = 'tender' | 'framework' | 'dps'
+
+/**
+ * Two-round tenders: 'psq' rows collect PSQ responses; once
+ * shortlisted the row flips to 'itt' and starts a fresh run through
+ * the normal statuses. 'single' is every one-round bid, including
+ * every DPS application.
+ */
+export type BidStage = 'single' | 'psq' | 'itt'
 
 /**
  * Canonical sales-pipeline stages. Labels for these values live in
@@ -244,6 +254,7 @@ export interface Tender {
   tender_url: string | null
   status: 'questionnaire_sent' | 'writing' | 'submitted' | 'won' | 'lost' | 'archived'
   procurement_type: ProcurementType
+  bid_stage: BidStage
   /** Stamped on the calendar day the tender enters 'won', cleared on leave. */
   won_at?: string | null
   assigned_to: string | null
