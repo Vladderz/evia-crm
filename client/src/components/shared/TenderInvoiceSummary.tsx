@@ -24,6 +24,15 @@ export interface TenderInvoiceSummaryProps {
   onMarkInvoiceSent: () => void;
   onMarkInvoicePaid: (inv: Invoice) => void;
   onEditInvoice: (inv: Invoice) => void;
+  /**
+   * When the invoice being summarised has more than one item, pass
+   * the invoice-level total and item count so the Amount line reads
+   * "Invoice total £X (N items)" alongside this item's amount.
+   */
+  invoiceGroup?: {
+    total: number | string;
+    itemCount: number;
+  } | null;
 }
 
 function invoiceBadge(inv: Invoice): { variant: BadgeVariant; label: string } | null {
@@ -47,7 +56,11 @@ export function TenderInvoiceSummary({
   onMarkInvoiceSent,
   onMarkInvoicePaid,
   onEditInvoice,
+  invoiceGroup,
 }: TenderInvoiceSummaryProps) {
+  const multiItemHint = invoiceGroup && invoiceGroup.itemCount > 1
+    ? `Invoice total ${formatMoney(invoiceGroup.total)} (${invoiceGroup.itemCount} items)`
+    : null;
   // Empty state
   if (!invoice) {
     if (variant === 'expand') return null;
@@ -158,6 +171,11 @@ export function TenderInvoiceSummary({
             </Button>
           </div>
         </div>
+        {multiItemHint && (
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
+            {multiItemHint}
+          </div>
+        )}
         {otherInvoiceCount > 0 && (
           <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
             {otherInvoiceCount === 1
@@ -238,6 +256,12 @@ export function TenderInvoiceSummary({
           </div>
         )}
       </div>
+
+      {multiItemHint && (
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+          {multiItemHint}
+        </div>
+      )}
 
       <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
         {!paid && (

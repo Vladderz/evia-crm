@@ -55,6 +55,7 @@ import {
 } from '../components/InvoiceDrawer/InvoiceDrawer';
 import { MarkPaidDialog } from '../components/MarkPaidDialog/MarkPaidDialog';
 import { TenderInvoiceSummary } from '../components/shared/TenderInvoiceSummary';
+import { buildInvoiceGroups } from '../lib/invoiceGroups';
 import NotesPanel from '../components/NotesPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -457,6 +458,7 @@ function ActionsCell({
 function ExpandPanel({
   row,
   invoice,
+  invoiceGroup,
   otherInvoiceCount,
   onEdit,
   onNotes,
@@ -468,6 +470,7 @@ function ExpandPanel({
 }: {
   row: Tender;
   invoice?: Invoice;
+  invoiceGroup?: { total: number; itemCount: number } | null;
   otherInvoiceCount: number;
   onEdit: (t: Tender) => void;
   onNotes: (t: Tender) => void;
@@ -496,6 +499,7 @@ function ExpandPanel({
     <>
       <TenderInvoiceSummary
         invoice={invoice}
+        invoiceGroup={invoiceGroup ?? null}
         otherInvoiceCount={otherInvoiceCount}
         variant="expand"
         onMarkInvoiceSent={() => onMarkInvoiceSent(row)}
@@ -740,6 +744,10 @@ export default function ActiveTenders() {
    * the Status column badge and the Won-row invoice action.
    */
   const invoiceByTender = useMemo(() => {
+    // Ties (same paid_date or same issue_date) break on ascending id
+    // so the pick is deterministic. Without this, several items of a
+    // shared-number invoice at the same date can flip which one shows
+    // on the row between renders.
     const unpaidByTender = new Map<number, Invoice>();
     const paidByTender = new Map<number, Invoice>();
     for (const inv of invoices) {
@@ -747,12 +755,21 @@ export default function ActiveTenders() {
       if (inv.tender_id == null) continue;
       if (inv.paid_date) {
         const ex = paidByTender.get(inv.tender_id);
-        if (!ex || (inv.paid_date ?? '') > (ex.paid_date ?? '')) {
+        if (!ex) {
           paidByTender.set(inv.tender_id, inv);
+        } else {
+          const cur = ex.paid_date ?? '';
+          const nxt = inv.paid_date ?? '';
+          if (nxt > cur || (nxt === cur && inv.id < ex.id)) {
+            paidByTender.set(inv.tender_id, inv);
+          }
         }
       } else {
         const ex = unpaidByTender.get(inv.tender_id);
-        if (!ex || inv.issue_date < ex.issue_date) {
+        if (!ex) {
+          unpaidByTender.set(inv.tender_id, inv);
+        } else if (inv.issue_date < ex.issue_date
+            || (inv.issue_date === ex.issue_date && inv.id < ex.id)) {
           unpaidByTender.set(inv.tender_id, inv);
         }
       }
@@ -782,6 +799,22 @@ export default function ActiveTenders() {
       counts.set(inv.tender_id, (counts.get(inv.tender_id) ?? 0) + 1);
     }
     return counts;
+  }, [invoices]);
+
+  /**
+   * Group index by item id so the Invoice section can flag multi-item
+   * invoices with an "Invoice total ... (N items)" line. Groups are
+   * built via the shared helper so this page and the Income page see
+   * exactly the same shape.
+   */
+  const invoiceGroupByItemId = useMemo(() => {
+    const groups = buildInvoiceGroups(invoices);
+    const map = new Map<number, { total: number; itemCount: number }>();
+    for (const g of groups) {
+      const info = { total: g.total, itemCount: g.itemCount };
+      for (const it of g.items) map.set(it.id, info);
+    }
+    return map;
   }, [invoices]);
 
   const invoiceDrawerTenderOptions: TenderPickerOption[] = useMemo(() => {
@@ -1565,6 +1598,7 @@ export default function ActiveTenders() {
               <ExpandPanel
                 row={row}
                 invoice={rowInvoice}
+                invoiceGroup={rowInvoice ? invoiceGroupByItemId.get(rowInvoice.id) ?? null : null}
                 otherInvoiceCount={rowInvoice ? Math.max(0, totalCount - 1) : 0}
                 onEdit={openEdit}
                 onNotes={t => openNotes({ id: t.id, title: t.title })}
@@ -1627,9 +1661,11 @@ export default function ActiveTenders() {
             if (!tender) return null;
             const rowInvoice = invoiceByTender.get(tender.id);
             const totalCount = nonVoidInvoiceCountByTender.get(tender.id) ?? 0;
+            const rowGroup = rowInvoice ? invoiceGroupByItemId.get(rowInvoice.id) ?? null : null;
             return (
               <TenderInvoiceSummary
                 invoice={rowInvoice}
+                invoiceGroup={rowGroup}
                 otherInvoiceCount={rowInvoice ? Math.max(0, totalCount - 1) : 0}
                 variant="drawer"
                 onMarkInvoiceSent={() => openMarkInvoiceSent(tender)}
@@ -1712,6 +1748,20 @@ export default function ActiveTenders() {
       <MarkPaidDialog
         open={markInvoicePaidTarget !== null}
         invoice={markInvoicePaidTarget}
+        groupSummary={
+          markInvoicePaidTarget
+            ? (() => {
+                const g = invoiceGroupByItemId.get(markInvoicePaidTarget.id);
+                return g && g.itemCount > 1
+                  ? {
+                      invoiceNumber: markInvoicePaidTarget.invoice_number ?? null,
+                      itemCount: g.itemCount,
+                      total: g.total,
+                    }
+                  : null;
+              })()
+            : null
+        }
         onClose={() => setMarkInvoicePaidTarget(null)}
         onConfirm={handleMarkInvoicePaid}
       />

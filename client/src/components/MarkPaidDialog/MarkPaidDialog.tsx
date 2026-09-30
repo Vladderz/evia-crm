@@ -10,6 +10,16 @@ interface MarkPaidDialogProps {
   invoice: Invoice | null;
   onClose: () => void;
   onConfirm: (payload: { paid_date: string }) => Promise<void> | void;
+  /**
+   * Optional summary for a multi-item invoice. When present, the
+   * dialog's description reads "All N items on INV-007, £X,XXX.XX"
+   * instead of just the single row's number and total.
+   */
+  groupSummary?: {
+    invoiceNumber: string | null;
+    itemCount: number;
+    total: number | string;
+  } | null;
 }
 
 export function MarkPaidDialog({
@@ -17,6 +27,7 @@ export function MarkPaidDialog({
   invoice,
   onClose,
   onConfirm,
+  groupSummary,
 }: MarkPaidDialogProps) {
   const [paidDate, setPaidDate] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +56,9 @@ export function MarkPaidDialog({
   }
 
   const description = invoice
-    ? `${invoice.invoice_number ?? 'This invoice'}, ${invoice.client_name}, ${formatMoney(invoice.total)}`
+    ? (groupSummary && groupSummary.itemCount > 1
+        ? `All ${groupSummary.itemCount} items on ${groupSummary.invoiceNumber ?? 'this invoice'}, ${formatMoney(groupSummary.total)}`
+        : `${invoice.invoice_number ?? 'This invoice'}, ${invoice.client_name}, ${formatMoney(invoice.total)}`)
     : '';
 
   const footer = (

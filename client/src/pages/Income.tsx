@@ -43,6 +43,10 @@ import {
 import { MarkPaidDialog } from '../components/MarkPaidDialog/MarkPaidDialog';
 import { VoidInvoiceDialog } from '../components/VoidInvoiceDialog/VoidInvoiceDialog';
 import {
+  buildInvoiceGroups,
+  type InvoiceGroup,
+} from '../lib/invoiceGroups';
+import {
   INVOICE_CATEGORY_LABELS,
   addDaysYmd,
   currentMonthKeyLondon,
@@ -111,16 +115,30 @@ function TenderCell({ row }: { row: ToInvoiceTender }) {
   );
 }
 
-function InvoiceIdentityCell({ row }: { row: Invoice }) {
+function InvoiceGroupIdentityCell({ group }: { group: InvoiceGroup }) {
+  const first = group.items[0]!;
+  const categories = Array.from(new Set(group.items.map(i => i.category)));
+  const categoryLabel = categories.length === 1
+    ? (INVOICE_CATEGORY_LABELS[categories[0]!] ?? categories[0])
+    : 'Mixed categories';
+  const primary = group.itemCount === 1
+    ? `${group.number ?? '(no number)'} - ${first.description}`
+    : (group.number ?? '(no number)');
   return (
     <div className="dt-cell-2line">
       <span className="dt-cell-primary">
-        <TruncatedText>
-          {`${row.invoice_number ?? '(no number)'} - ${row.description}`}
-        </TruncatedText>
+        <TruncatedText>{primary}</TruncatedText>
       </span>
       <span className="dt-cell-secondary dt-cell-secondary-sans">
-        {row.client_name} - {INVOICE_CATEGORY_LABELS[row.category] ?? row.category}
+        {group.clientName} - {categoryLabel}
+        {group.itemCount > 1 && (
+          <>
+            {' - '}
+            <span style={{ color: 'var(--text-tertiary)' }}>
+              {`${group.itemCount} items`}
+            </span>
+          </>
+        )}
       </span>
     </div>
   );
@@ -135,6 +153,10 @@ function AwaitingStatusBadge({ row }: { row: Invoice }) {
   if (untilDue === 0) return <Badge variant="warning" withDot>Due Today</Badge>;
   if (untilDue == null) return <Badge variant="neutral">No Due Date</Badge>;
   return <Badge variant="neutral">{`Due in ${daysWord(untilDue)}`}</Badge>;
+}
+
+function AwaitingGroupStatusBadge({ group }: { group: InvoiceGroup }) {
+  return <AwaitingStatusBadge row={group.items[0]!} />;
 }
 
 /* ---------------- page ---------------- */
@@ -157,9 +179,20 @@ export default function Income() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [drawerState, setDrawerState] = useState<DrawerState | null>(null);
-  const [markPaidTarget, setMarkPaidTarget] = useState<Invoice | null>(null);
-  const [voidTarget, setVoidTarget] = useState<Invoice | null>(null);
+  const [markPaidTarget, setMarkPaidTarget] = useState<{
+    invoice: Invoice;
+    group: InvoiceGroup | null;
+  } | null>(null);
+  const [voidTarget, setVoidTarget] = useState<{
+    invoice: Invoice;
+    group: InvoiceGroup | null;
+    /** When true, forces scope='invoice' (group action, no choice). */
+    forceInvoiceScope: boolean;
+    /** Default scope when the user is presented with the choice. */
+    defaultScope: 'item' | 'invoice';
+  } | null>(null);
   const [drawerSubmitError, setDrawerSubmitError] = useState<string | null>(null);
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 200);
@@ -238,7 +271,20 @@ export default function Income() {
   /* ---------------- derived data ---------------- */
 
   const nonVoid = useMemo(() => invoices.filter(i => i.state !== 'void'), [invoices]);
-  const voided = useMemo(() => invoices.filter(i => i.state === 'void'), [invoices]);
+
+  // Groups: every invoice_number+client bucket, void groups included.
+  // Money totals keep summing items (each item carries its own amount).
+  // Counts, hints and per-invoice averages read from groups so a
+  // multi-item invoice registers as one invoice, not several.
+  const allGroups = useMemo(() => buildInvoiceGroups(invoices), [invoices]);
+  const nonVoidGroups = useMemo(
+    () => allGroups.filter(g => g.state !== 'void'),
+    [allGroups],
+  );
+  const voidGroups = useMemo(
+    () => allGroups.filter(g => g.state === 'void'),
+    [allGroups],
+  );
 
   const invoicedThisMonth = useMemo(
     () => nonVoid.filter(i => month === 'all' || monthKeyOf(i.issue_date) === month),
@@ -249,11 +295,24 @@ export default function Income() {
     [nonVoid, month],
   );
 
+  const invoicedThisMonthGroups = useMemo(
+    () => nonVoidGroups.filter(g => month === 'all' || monthKeyOf(g.issueDate ?? undefined) === month),
+    [nonVoidGroups, month],
+  );
+  const paidThisMonthGroups = useMemo(
+    () => nonVoidGroups.filter(g => g.paidDate && (month === 'all' || monthKeyOf(g.paidDate ?? undefined) === month)),
+    [nonVoidGroups, month],
+  );
+
   const outstanding = useMemo(
     () => nonVoid.filter(i => !i.paid_date),
     [nonVoid],
   );
-  const overdueCount = outstanding.filter(i => i.state === 'overdue').length;
+  const outstandingGroups = useMemo(
+    () => nonVoidGroups.filter(g => !g.paidDate),
+    [nonVoidGroups],
+  );
+  const overdueGroupCount = outstandingGroups.filter(g => g.state === 'overdue').length;
 
   /* KPI numbers */
 
@@ -272,9 +331,10 @@ export default function Income() {
 
   const outstandingTotal = outstanding.reduce((s, i) => s + toNum(i.total), 0);
 
+  // Avg Days to Pay averages one value per invoice, not per item.
   const avgPayDays = (() => {
-    const payDays = paidThisMonth
-      .map(i => (typeof i.days_to_pay === 'number' ? i.days_to_pay : null))
+    const payDays = paidThisMonthGroups
+      .map(g => (typeof g.daysToPay === 'number' ? g.daysToPay : null))
       .filter((n): n is number => n !== null);
     if (payDays.length === 0) return null;
     return Math.round(payDays.reduce((s, n) => s + n, 0) / payDays.length);
@@ -302,36 +362,36 @@ export default function Income() {
     .reduce((s, i) => s + toNum(i.net_amount), 0);
   const belowThreshold = VAT_THRESHOLD - turnover12m;
 
-  /* Tab counts */
+  /* Tab counts (one row per invoice, not per item) */
   const awaitingSet = useMemo(
-    () => nonVoid.filter(i => !i.paid_date),
-    [nonVoid],
+    () => nonVoidGroups.filter(g => !g.paidDate),
+    [nonVoidGroups],
   );
   const paidSet = useMemo(
-    () => nonVoid.filter(i => i.paid_date && (month === 'all' || monthKeyOf(i.paid_date) === month)),
-    [nonVoid, month],
+    () => nonVoidGroups.filter(g => g.paidDate && (month === 'all' || monthKeyOf(g.paidDate ?? undefined) === month)),
+    [nonVoidGroups, month],
   );
 
   /* Awaiting sorted by due date */
   const awaitingSorted = useMemo(() => {
     return [...awaitingSet].sort((a, b) => {
-      const da = a.due_date ?? '9999-12-31';
-      const db = b.due_date ?? '9999-12-31';
+      const da = a.dueDate ?? '9999-12-31';
+      const db = b.dueDate ?? '9999-12-31';
       return da.localeCompare(db);
     });
   }, [awaitingSet]);
 
   const paidSorted = useMemo(() => {
     return [...paidSet].sort((a, b) => {
-      const da = a.paid_date ?? '';
-      const db = b.paid_date ?? '';
+      const da = a.paidDate ?? '';
+      const db = b.paidDate ?? '';
       return db.localeCompare(da);
     });
   }, [paidSet]);
 
   const voidSorted = useMemo(
-    () => [...voided].sort((a, b) => (b.issue_date ?? '').localeCompare(a.issue_date ?? '')),
-    [voided],
+    () => [...voidGroups].sort((a, b) => (b.issueDate ?? '').localeCompare(a.issueDate ?? '')),
+    [voidGroups],
   );
 
   /* By-month rollup */
@@ -355,12 +415,16 @@ export default function Income() {
     const range = monthKeyRange(min, currentMonth);
 
     return [...range].reverse().map(key => {
-      const issued = nonVoid.filter(i => monthKeyOf(i.issue_date) === key);
-      const paid = nonVoid.filter(i => monthKeyOf(i.paid_date) === key);
-      const invoicedSum = issued.reduce((s, i) => s + toNum(i.total), 0);
-      const receivedSum = paid.reduce((s, i) => s + toNum(i.amount_received ?? i.total), 0);
-      const days = paid
-        .map(i => (typeof i.days_to_pay === 'number' ? i.days_to_pay : null))
+      // Sums keep summing items (each item carries its own money);
+      // count is groups so a multi-item invoice registers as one.
+      const issuedItems = nonVoid.filter(i => monthKeyOf(i.issue_date) === key);
+      const paidItems = nonVoid.filter(i => monthKeyOf(i.paid_date) === key);
+      const issuedGroups = nonVoidGroups.filter(g => monthKeyOf(g.issueDate ?? undefined) === key);
+      const paidGroups = nonVoidGroups.filter(g => monthKeyOf(g.paidDate ?? undefined) === key);
+      const invoicedSum = issuedItems.reduce((s, i) => s + toNum(i.total), 0);
+      const receivedSum = paidItems.reduce((s, i) => s + toNum(i.amount_received ?? i.total), 0);
+      const days = paidGroups
+        .map(g => (typeof g.daysToPay === 'number' ? g.daysToPay : null))
         .filter((n): n is number => n !== null);
       const avg = days.length > 0
         ? Math.round(days.reduce((s, n) => s + n, 0) / days.length)
@@ -368,26 +432,25 @@ export default function Income() {
       return {
         key,
         label: shortMonthLabel(key),
-        invoiceCount: issued.length,
+        invoiceCount: issuedGroups.length,
         invoiced: invoicedSum,
         received: receivedSum,
         avgPay: avg,
       };
     });
-  }, [nonVoid, currentMonth]);
+  }, [nonVoid, nonVoidGroups, currentMonth]);
 
   /* Search filter */
   const q = debouncedSearch.trim().toLowerCase();
-  function matchesSearch(inv: Invoice): boolean {
+  function matchesSearchGroup(g: InvoiceGroup): boolean {
     if (!q) return true;
-    const hay = [
-      inv.invoice_number ?? '',
-      inv.client_name,
-      inv.description,
-      inv.contract_label ?? '',
-      inv.tender_title ?? '',
-    ].join(' ').toLowerCase();
-    return hay.includes(q);
+    const parts = [g.number ?? '', g.clientName];
+    for (const it of g.items) {
+      parts.push(it.description);
+      parts.push(it.contract_label ?? '');
+      parts.push(it.tender_title ?? '');
+    }
+    return parts.join(' ').toLowerCase().includes(q);
   }
   function matchesSearchTender(t: ToInvoiceTender): boolean {
     if (!q) return true;
@@ -396,9 +459,9 @@ export default function Income() {
   }
 
   const filteredToInvoice = toInvoice.filter(matchesSearchTender);
-  const filteredAwaiting = awaitingSorted.filter(matchesSearch);
-  const filteredPaid = paidSorted.filter(matchesSearch);
-  const filteredVoid = voidSorted.filter(matchesSearch);
+  const filteredAwaiting = awaitingSorted.filter(matchesSearchGroup);
+  const filteredPaid = paidSorted.filter(matchesSearchGroup);
+  const filteredVoid = voidSorted.filter(matchesSearchGroup);
 
   /* Tabs */
   const tabs = [
@@ -406,7 +469,7 @@ export default function Income() {
     { key: 'awaiting',    label: 'Awaiting Payment', count: awaitingSet.length },
     { key: 'paid',        label: 'Paid',             count: paidSet.length },
     { key: 'by_month',    label: 'By Month' },
-    { key: 'void',        label: 'Void',             count: voided.length },
+    { key: 'void',        label: 'Void',             count: voidGroups.length },
   ];
 
   /* Drawer tender options: every tender not dropped. */
@@ -509,12 +572,14 @@ export default function Income() {
 
   async function handleMarkPaid(payload: { paid_date: string }) {
     if (!markPaidTarget) return;
-    const target = markPaidTarget;
+    const { invoice } = markPaidTarget;
     try {
-      await api.put(`/invoices/${target.id}`, {
+      // Server propagates paid_date to every sibling item of the
+      // invoice, so hitting any one item marks the whole invoice paid.
+      await api.put(`/invoices/${invoice.id}`, {
         paid_date: payload.paid_date || null,
       });
-      toast.success(`${target.invoice_number ?? 'Invoice'} marked paid`);
+      toast.success(`${invoice.invoice_number ?? 'Invoice'} marked paid`);
       setMarkPaidTarget(null);
       fetchData();
     } catch {
@@ -522,15 +587,15 @@ export default function Income() {
     }
   }
 
-  async function handleVoidConfirm(reason: string) {
+  async function handleVoidConfirm(reason: string, scope: 'item' | 'invoice') {
     if (!voidTarget) return;
-    const target = voidTarget;
+    const { invoice } = voidTarget;
     try {
-      await api.post(`/invoices/${target.id}/void`, { reason });
-      toast.success(`${target.invoice_number ?? 'Invoice'} voided`);
+      await api.post(`/invoices/${invoice.id}/void`, { reason, scope });
+      toast.success(`${invoice.invoice_number ?? 'Invoice'} voided`);
       setVoidTarget(null);
       // Also close the invoice drawer if it was open for this record.
-      if (drawerState?.mode === 'edit' && drawerState.invoice?.id === target.id) {
+      if (drawerState?.mode === 'edit' && drawerState.invoice?.id === invoice.id) {
         closeDrawer();
       }
       fetchData();
@@ -539,17 +604,43 @@ export default function Income() {
     }
   }
 
-  async function handleRestore(inv: Invoice) {
+  async function handleRestore(inv: Invoice, scope: 'item' | 'invoice' = 'item') {
     try {
-      await api.post(`/invoices/${inv.id}/restore`);
+      await api.post(`/invoices/${inv.id}/restore`, { scope });
       toast.success(`${inv.invoice_number ?? 'Invoice'} restored`);
       if (drawerState?.mode === 'edit' && drawerState.invoice?.id === inv.id) {
         closeDrawer();
       }
       fetchData();
-    } catch {
-      toast.error('Failed to restore invoice. Please try again.');
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Failed to restore invoice. Please try again.';
+      toast.error(message);
     }
+  }
+
+  function openMarkPaidForGroup(group: InvoiceGroup) {
+    setMarkPaidTarget({ invoice: group.items[0]!, group });
+  }
+  function openVoidForGroup(group: InvoiceGroup) {
+    // A group-row Void always applies to the whole invoice; hide the
+    // choice.
+    setVoidTarget({
+      invoice: group.items[0]!,
+      group,
+      forceInvoiceScope: true,
+      defaultScope: 'invoice',
+    });
+  }
+  function openVoidForItem(inv: Invoice, group: InvoiceGroup | null) {
+    // Item-scoped void: default is 'item'. Show the choice when the
+    // invoice has siblings (group.itemCount > 1).
+    setVoidTarget({
+      invoice: inv,
+      group,
+      forceInvoiceScope: false,
+      defaultScope: 'item',
+    });
   }
 
   async function handleDownloadCsv() {
@@ -618,14 +709,14 @@ export default function Income() {
     },
   ];
 
-  const awaitingCols: Column<Invoice>[] = [
+  const awaitingCols: Column<InvoiceGroup>[] = [
     {
       key: 'invoice',
       header: 'Invoice',
       width: 'flex',
       minWidth: 260,
       maxWidth: 400,
-      render: r => <InvoiceIdentityCell row={r} />,
+      render: g => <InvoiceGroupIdentityCell group={g} />,
     },
     {
       key: 'amount',
@@ -633,7 +724,7 @@ export default function Income() {
       width: 120,
       align: 'right',
       mono: true,
-      render: r => formatMoney(r.total),
+      render: g => formatMoney(g.total),
     },
     {
       key: 'issued',
@@ -641,7 +732,7 @@ export default function Income() {
       width: 110,
       align: 'right',
       mono: true,
-      render: r => formatDate(r.issue_date),
+      render: g => formatDate(g.issueDate),
     },
     {
       key: 'due',
@@ -649,42 +740,47 @@ export default function Income() {
       width: 110,
       align: 'right',
       mono: true,
-      render: r => r.due_date
-        ? formatDate(r.due_date)
+      render: g => g.dueDate
+        ? formatDate(g.dueDate)
         : <span style={{ color: 'var(--text-tertiary)' }}>-</span>,
     },
     {
       key: 'status',
       header: 'Status',
       width: 160,
-      render: r => <AwaitingStatusBadge row={r} />,
+      render: g => <AwaitingGroupStatusBadge group={g} />,
     },
     {
       key: 'actions',
       header: '',
-      width: 220,
+      width: 260,
       align: 'right',
-      render: r => (
+      render: g => (
         <span className="dt-actions" onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
-          <Button variant="primary" size="sm" icon={CheckCircle2} onClick={() => setMarkPaidTarget(r)}>
+          <Button variant="primary" size="sm" icon={CheckCircle2} onClick={() => openMarkPaidForGroup(g)}>
             Mark Paid
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
-            Edit
+          {g.itemCount === 1 && (
+            <Button variant="ghost" size="sm" onClick={() => openEdit(g.items[0]!)}>
+              Edit
+            </Button>
+          )}
+          <Button variant="danger" size="sm" onClick={() => openVoidForGroup(g)}>
+            Void
           </Button>
         </span>
       ),
     },
   ];
 
-  const paidCols: Column<Invoice>[] = [
+  const paidCols: Column<InvoiceGroup>[] = [
     {
       key: 'invoice',
       header: 'Invoice',
       width: 'flex',
       minWidth: 260,
       maxWidth: 400,
-      render: r => <InvoiceIdentityCell row={r} />,
+      render: g => <InvoiceGroupIdentityCell group={g} />,
     },
     {
       key: 'received',
@@ -692,7 +788,7 @@ export default function Income() {
       width: 120,
       align: 'right',
       mono: true,
-      render: r => formatMoney(r.amount_received ?? r.total),
+      render: g => formatMoney(g.amountReceived ?? g.total),
     },
     {
       key: 'issued',
@@ -700,7 +796,7 @@ export default function Income() {
       width: 110,
       align: 'right',
       mono: true,
-      render: r => formatDate(r.issue_date),
+      render: g => formatDate(g.issueDate),
     },
     {
       key: 'paid',
@@ -708,7 +804,7 @@ export default function Income() {
       width: 110,
       align: 'right',
       mono: true,
-      render: r => r.paid_date ? formatDate(r.paid_date) : '-',
+      render: g => g.paidDate ? formatDate(g.paidDate) : '-',
     },
     {
       key: 'days',
@@ -716,9 +812,9 @@ export default function Income() {
       width: 120,
       align: 'right',
       mono: true,
-      render: r => {
-        if (typeof r.days_to_pay !== 'number') return '-';
-        return r.days_to_pay === 0 ? 'Same Day' : daysWord(r.days_to_pay);
+      render: g => {
+        if (typeof g.daysToPay !== 'number') return '-';
+        return g.daysToPay === 0 ? 'Same Day' : daysWord(g.daysToPay);
       },
     },
     {
@@ -726,9 +822,11 @@ export default function Income() {
       header: '',
       width: 100,
       align: 'right',
-      render: r => (
+      render: g => (
         <span className="dt-actions" onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
-          <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>Edit</Button>
+          {g.itemCount === 1 && (
+            <Button variant="ghost" size="sm" onClick={() => openEdit(g.items[0]!)}>Edit</Button>
+          )}
         </span>
       ),
     },
@@ -749,14 +847,14 @@ export default function Income() {
     },
   ];
 
-  const voidCols: Column<Invoice>[] = [
+  const voidCols: Column<InvoiceGroup>[] = [
     {
       key: 'invoice',
       header: 'Invoice',
       width: 'flex',
       minWidth: 260,
       maxWidth: 400,
-      render: r => <InvoiceIdentityCell row={r} />,
+      render: g => <InvoiceGroupIdentityCell group={g} />,
     },
     {
       key: 'amount',
@@ -764,7 +862,7 @@ export default function Income() {
       width: 120,
       align: 'right',
       mono: true,
-      render: r => formatMoney(r.total),
+      render: g => formatMoney(g.total),
     },
     {
       key: 'issued',
@@ -772,7 +870,7 @@ export default function Income() {
       width: 110,
       align: 'right',
       mono: true,
-      render: r => formatDate(r.issue_date),
+      render: g => formatDate(g.issueDate),
     },
     {
       key: 'reason',
@@ -780,22 +878,73 @@ export default function Income() {
       width: 'flex',
       minWidth: 240,
       maxWidth: 320,
-      render: r => r.void_reason
-        ? <TruncatedText>{r.void_reason}</TruncatedText>
-        : <span style={{ color: 'var(--text-tertiary)' }}>-</span>,
+      render: g => {
+        const reasons = Array.from(new Set(g.items.map(i => i.void_reason).filter(Boolean)));
+        if (reasons.length === 0) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+        return <TruncatedText>{reasons.join('; ')}</TruncatedText>;
+      },
     },
     {
       key: 'actions',
       header: '',
-      width: 100,
+      width: 140,
       align: 'right',
-      render: r => (
+      render: g => (
         <span className="dt-actions" onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
-          <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>Edit</Button>
+          {g.itemCount === 1 && (
+            <Button variant="ghost" size="sm" onClick={() => openEdit(g.items[0]!)}>Edit</Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => handleRestore(g.items[0]!, 'invoice')}>
+            Restore
+          </Button>
         </span>
       ),
     },
   ];
+
+  /* Sub-row for a multi-item group. Rendered inside the DataTable's
+   * expanded row slot; lists every item with its own Edit button so
+   * per-item changes (description, amounts, tender) still work. */
+  function renderGroupItems(group: InvoiceGroup) {
+    if (group.itemCount <= 1) return null;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+          {`Items on ${group.number ?? 'this invoice'}`}
+        </div>
+        {group.items.map(it => (
+          <div
+            key={it.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '6px 0',
+              borderTop: '1px solid var(--border-subtle)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <span style={{ color: 'var(--text-primary-v1)' }}>
+                <TruncatedText>{it.tender_title ?? it.description}</TruncatedText>
+              </span>
+              <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                <TruncatedText>{it.description}</TruncatedText>
+              </span>
+            </div>
+            <div
+              className="dt-actions"
+              onClick={e => e.stopPropagation()}
+              style={{ display: 'inline-flex', gap: 12, alignItems: 'center' }}
+            >
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{formatMoney(it.total)}</span>
+              <Button variant="ghost" size="sm" onClick={() => openEdit(it)}>Edit</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const emptyToInvoice = { message: 'Nothing waiting to be invoiced' };
   const emptyAwaiting = { message: 'No invoices awaiting payment' };
@@ -807,7 +956,7 @@ export default function Income() {
   const emptyByMonth = { message: 'No months to show' };
   const emptyVoid = { message: 'No voided invoices' };
 
-  const outstandingTone: KPITileTone = overdueCount > 0 ? 'danger' : 'warning';
+  const outstandingTone: KPITileTone = overdueGroupCount > 0 ? 'danger' : 'warning';
   const turnoverTone: KPITileTone = turnover12m > VAT_THRESHOLD ? 'danger' : 'brand';
   const turnoverHint = turnover12m > VAT_THRESHOLD
     ? `${formatMoney(turnover12m - VAT_THRESHOLD)} over the VAT threshold`
@@ -815,20 +964,20 @@ export default function Income() {
   // avoid unused-var lint if belowThreshold is never referenced.
   void belowThreshold;
 
-  const invoicedHint = invoicedThisMonth.length === 0
+  const invoicedHint = invoicedThisMonthGroups.length === 0
     ? 'Nothing invoiced'
     : `${formatMoney(invoicedPaid)} paid, ${formatMoney(invoicedOwed)} owed`;
 
-  const receivedHint = paidThisMonth.length > 0
-    ? pluralPayments(paidThisMonth.length)
+  const receivedHint = paidThisMonthGroups.length > 0
+    ? pluralPayments(paidThisMonthGroups.length)
     : undefined;
 
   const outstandingHintParts: string[] = [];
-  if (outstanding.length > 0) {
-    outstandingHintParts.push(`${outstanding.length} ${outstanding.length === 1 ? 'invoice' : 'invoices'}`);
-    if (overdueCount > 0) outstandingHintParts.push(`${overdueCount} overdue`);
+  if (outstandingGroups.length > 0) {
+    outstandingHintParts.push(`${outstandingGroups.length} ${outstandingGroups.length === 1 ? 'invoice' : 'invoices'}`);
+    if (overdueGroupCount > 0) outstandingHintParts.push(`${overdueGroupCount} overdue`);
   }
-  const outstandingHint = outstanding.length === 0
+  const outstandingHint = outstandingGroups.length === 0
     ? 'Nothing outstanding'
     : outstandingHintParts.join(', ');
 
@@ -887,7 +1036,7 @@ export default function Income() {
           label="Outstanding"
           value={loading ? formatMoney(0) : formatMoney(outstandingTotal)}
           hint={outstandingHint}
-          icon={overdueCount > 0 ? AlertCircle : Clock}
+          icon={overdueGroupCount > 0 ? AlertCircle : Clock}
           tone={outstandingTone}
           mono
           loading={loading}
@@ -942,10 +1091,10 @@ export default function Income() {
         />
       )}
       {tab === 'awaiting' && (
-        <DataTable<Invoice>
+        <DataTable<InvoiceGroup>
           columns={awaitingCols}
           data={filteredAwaiting}
-          rowKey={r => String(r.id)}
+          rowKey={g => g.key}
           variant="attached"
           ariaLabel="Invoices awaiting payment"
           isLoading={loading}
@@ -953,13 +1102,22 @@ export default function Income() {
           errorMessage="Couldn't load invoices"
           onRetry={fetchData}
           emptyState={emptyAwaiting}
+          onRowClick={g => {
+            if (g.itemCount > 1) {
+              setExpandedGroupKey(prev => prev === g.key ? null : g.key);
+            }
+          }}
+          expandedRow={{
+            rowId: expandedGroupKey,
+            render: renderGroupItems,
+          }}
         />
       )}
       {tab === 'paid' && (
-        <DataTable<Invoice>
+        <DataTable<InvoiceGroup>
           columns={paidCols}
           data={filteredPaid}
-          rowKey={r => String(r.id)}
+          rowKey={g => g.key}
           variant="attached"
           ariaLabel="Paid invoices"
           isLoading={loading}
@@ -967,6 +1125,15 @@ export default function Income() {
           errorMessage="Couldn't load invoices"
           onRetry={fetchData}
           emptyState={emptyPaid}
+          onRowClick={g => {
+            if (g.itemCount > 1) {
+              setExpandedGroupKey(prev => prev === g.key ? null : g.key);
+            }
+          }}
+          expandedRow={{
+            rowId: expandedGroupKey,
+            render: renderGroupItems,
+          }}
         />
       )}
       {tab === 'by_month' && (
@@ -985,10 +1152,10 @@ export default function Income() {
         />
       )}
       {tab === 'void' && (
-        <DataTable<Invoice>
+        <DataTable<InvoiceGroup>
           columns={voidCols}
           data={filteredVoid}
-          rowKey={r => String(r.id)}
+          rowKey={g => g.key}
           variant="attached"
           ariaLabel="Voided invoices"
           isLoading={loading}
@@ -996,6 +1163,15 @@ export default function Income() {
           errorMessage="Couldn't load invoices"
           onRetry={fetchData}
           emptyState={emptyVoid}
+          onRowClick={g => {
+            if (g.itemCount > 1) {
+              setExpandedGroupKey(prev => prev === g.key ? null : g.key);
+            }
+          }}
+          expandedRow={{
+            rowId: expandedGroupKey,
+            render: renderGroupItems,
+          }}
         />
       )}
 
@@ -1006,12 +1182,12 @@ export default function Income() {
         onSave={handleSaveInvoice}
         onVoid={
           drawerState?.mode === 'edit' && drawerState.invoice && !drawerState.invoice.voided_at
-            ? () => setVoidTarget(drawerState.invoice!)
+            ? () => openVoidForItem(drawerState.invoice!, allGroups.find(g => g.items.some(i => i.id === drawerState.invoice!.id)) ?? null)
             : undefined
         }
         onRestore={
           drawerState?.mode === 'edit' && drawerState.invoice && drawerState.invoice.voided_at
-            ? () => handleRestore(drawerState.invoice!)
+            ? () => handleRestore(drawerState.invoice!, 'item')
             : undefined
         }
         clients={clients.map(c => ({ id: c.id, name: c.company_name }))}
@@ -1024,13 +1200,34 @@ export default function Income() {
 
       <MarkPaidDialog
         open={markPaidTarget !== null}
-        invoice={markPaidTarget}
+        invoice={markPaidTarget?.invoice ?? null}
+        groupSummary={
+          markPaidTarget?.group
+            ? {
+                invoiceNumber: markPaidTarget.group.number,
+                itemCount: markPaidTarget.group.itemCount,
+                total: markPaidTarget.group.total,
+              }
+            : null
+        }
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={handleMarkPaid}
       />
 
       <VoidInvoiceDialog
         open={voidTarget !== null}
+        multiItem={
+          voidTarget && voidTarget.group && voidTarget.group.itemCount > 1
+            ? {
+                invoiceNumber: voidTarget.group.number,
+                itemCount: voidTarget.group.itemCount,
+                itemTotal: Number(voidTarget.invoice.total ?? 0),
+                invoiceTotal: voidTarget.group.total,
+                defaultScope: voidTarget.defaultScope,
+                forceInvoiceScope: voidTarget.forceInvoiceScope,
+              }
+            : null
+        }
         onClose={() => setVoidTarget(null)}
         onConfirm={handleVoidConfirm}
       />
