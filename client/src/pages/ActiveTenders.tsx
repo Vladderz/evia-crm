@@ -45,6 +45,7 @@ import {
 } from '../components/TenderDrawer/TenderDrawer';
 import { DropDialog } from '../components/DropDialog/DropDialog';
 import { MarkLostDialog } from '../components/MarkLostDialog/MarkLostDialog';
+import { ShortlistDialog } from '../components/ShortlistDialog/ShortlistDialog';
 import { AwaitingInfoDialog } from '../components/AwaitingInfoDialog/AwaitingInfoDialog';
 import {
   InvoiceDrawer,
@@ -61,6 +62,8 @@ import {
   formatDate,
   formatMoney,
   formatRelativeDays,
+  isNotShortlisted,
+  stageBadge,
   tenderStatusLabel,
   tenderStatusOptions,
   tenderViewOf,
@@ -207,6 +210,8 @@ function StatusCell({ row, invoice }: { row: Tender; invoice?: Invoice }) {
   // Row stays where it is; the badge is the whole surfacing mechanism.
   const showChase = row.status === 'submitted' && row.is_stale === true;
 
+  const stage = stageBadge(row);
+
   let invoiceBadge: { variant: BadgeVariant; label: string } | null = null;
   if (invoice) {
     if (invoice.state === 'paid') {
@@ -223,6 +228,9 @@ function StatusCell({ row, invoice }: { row: Tender; invoice?: Invoice }) {
       <Badge variant={STATUS_VARIANT[row.status]} withDot={STATUS_HAS_DOT[row.status]}>
         {tenderStatusLabel(row.status, row.procurement_type)}
       </Badge>
+      {stage && (
+        <Badge variant={stage.variant} withDot>{stage.label}</Badge>
+      )}
       {showAwaiting && (
         <span title={awaitingTooltip}>
           <Badge variant="warning" withDot>Chasing</Badge>
@@ -296,6 +304,7 @@ interface ActionsCellProps {
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
   onMarkLost: (t: Tender) => void;
+  onShortlist: (t: Tender) => void;
   onToggleAwaiting: (t: Tender) => void;
   onDrop: (t: Tender) => void;
   onMarkInvoiceSent: (t: Tender) => void;
@@ -320,6 +329,7 @@ function ActionsCell({
   onNotes,
   onAdvance,
   onMarkLost,
+  onShortlist,
   onToggleAwaiting,
   onDrop,
   onMarkInvoiceSent,
@@ -329,8 +339,17 @@ function ActionsCell({
   const inActiveStage = row.status === 'questionnaire_sent' || row.status === 'writing';
   const awaitingOn = inActiveStage && row.awaiting_info === true;
   const isDps = row.procurement_type === 'dps';
-  const markWonLabel = isDps ? 'Mark Admitted' : 'Mark Won';
-  const markLostLabel = isDps ? 'Mark Not Admitted' : 'Mark Lost';
+  // A submitted non-DPS PSQ swaps Mark Won / Mark Lost for the
+  // shortlist pair. Everything else on the row keeps its usual
+  // behaviour, including Back to Writing.
+  const isPsqSubmitted =
+    !isDps && row.status === 'submitted' && row.bid_stage === 'psq';
+  const markWonLabel = isPsqSubmitted
+    ? 'Shortlisted'
+    : (isDps ? 'Mark Admitted' : 'Mark Won');
+  const markLostLabel = isPsqSubmitted
+    ? 'Not Shortlisted'
+    : (isDps ? 'Mark Not Admitted' : 'Mark Lost');
 
   // Won rows carry an extra invoice action. No invoice: raise one.
   // Awaiting / overdue: mark it paid. Paid: edit it.
@@ -410,7 +429,12 @@ function ActionsCell({
           <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => onAdvance(row, 'writing')}>
             Back to Writing
           </Button>
-          <Button variant="primary" size="sm" icon={Check} onClick={() => onAdvance(row, 'won')}>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Check}
+            onClick={() => isPsqSubmitted ? onShortlist(row) : onAdvance(row, 'won')}
+          >
             {markWonLabel}
           </Button>
           <Button variant="danger" size="sm" icon={X} onClick={() => onMarkLost(row)}>
@@ -437,6 +461,7 @@ function ExpandPanel({
   onEdit,
   onNotes,
   onAdvance,
+  onShortlist,
   onEditInvoice,
   onMarkInvoicePaid,
 }: {
@@ -446,17 +471,23 @@ function ExpandPanel({
   onEdit: (t: Tender) => void;
   onNotes: (t: Tender) => void;
   onAdvance: (t: Tender, status: string) => void;
+  onShortlist: (t: Tender) => void;
   onEditInvoice: (inv: Invoice) => void;
   onMarkInvoicePaid: (inv: Invoice) => void;
 }) {
-  const markWonLabel = row.procurement_type === 'dps' ? 'Mark Admitted' : 'Mark Won';
-  const advanceTarget: { label: string; status: string } | null =
+  const isDps = row.procurement_type === 'dps';
+  const isPsqSubmitted =
+    !isDps && row.status === 'submitted' && row.bid_stage === 'psq';
+  const markWonLabel = isDps ? 'Mark Admitted' : 'Mark Won';
+  const advanceTarget: { label: string; status: string; onClick?: () => void } | null =
     row.status === 'questionnaire_sent'
       ? { label: 'Move to Writing', status: 'writing' }
       : row.status === 'writing'
         ? { label: 'Move to Submitted', status: 'submitted' }
         : row.status === 'submitted'
-          ? { label: markWonLabel, status: 'won' }
+          ? isPsqSubmitted
+            ? { label: 'Shortlisted', status: 'won', onClick: () => onShortlist(row) }
+            : { label: markWonLabel, status: 'won' }
           : null;
 
   const showInvoiceSection = invoice != null;
@@ -625,7 +656,7 @@ function ExpandPanel({
               variant="primary"
               size="sm"
               icon={advanceTarget.status === 'won' ? Check : Send}
-              onClick={() => onAdvance(row, advanceTarget.status)}
+              onClick={advanceTarget.onClick ?? (() => onAdvance(row, advanceTarget.status))}
             >
               {advanceTarget.label}
             </Button>
@@ -709,6 +740,7 @@ export default function ActiveTenders() {
   const [deleteTarget, setDeleteTarget] = useState<Tender | null>(null);
   const [dropTarget, setDropTarget] = useState<Tender | null>(null);
   const [markLostTarget, setMarkLostTarget] = useState<Tender | null>(null);
+  const [shortlistTarget, setShortlistTarget] = useState<Tender | null>(null);
   const [awaitingInfoTarget, setAwaitingInfoTarget] = useState<Tender | null>(null);
   // Invoice drawer covers both Mark Invoice Sent (POST) and Edit
   // Invoice (PUT). Only one target is ever set at a time.
@@ -869,7 +901,19 @@ export default function ActiveTenders() {
   const stats = useMemo(() => {
     const won = scopedTenders.filter(t => t.status === 'won');
     const lost = scopedTenders.filter(t => t.status === 'lost');
-    const decided = won.length + lost.length;
+    // Non-DPS PSQs that ended at Lost were dropped before the final
+    // round, so the win rate leaves them out and stays about
+    // final-stage bids only. isNotShortlisted always returns false
+    // on DPS records, so the DPS view carries on unchanged.
+    const notShortlistedCount = scopedTenders.filter(isNotShortlisted).length;
+    const decided = Math.max(0, won.length + lost.length - notShortlistedCount);
+    // Shortlist rate: how many PSQs made it through to the ITT. Y
+    // counts every PSQ that has resolved - not-shortlisted lost rows
+    // plus rows that are already at stage 'itt' (any status).
+    const ittCount = scopedTenders.filter(
+      t => t.bid_stage === 'itt' && t.procurement_type !== 'dps',
+    ).length;
+    const shortlistY = notShortlistedCount + ittCount;
     return {
       active: counts.all ?? 0,
       wonValue: won.reduce((s, t) => s + Number(t.estimated_value ?? 0), 0),
@@ -877,6 +921,8 @@ export default function ActiveTenders() {
       wonCount: won.length,
       decided,
       winRate: decided > 0 ? Math.round((won.length / decided) * 100) : 0,
+      shortlistX: ittCount,
+      shortlistY,
     };
   }, [scopedTenders, counts]);
 
@@ -1135,17 +1181,39 @@ export default function ActiveTenders() {
   async function handleMarkLostConfirm({ lossNote }: { lossNote: string }) {
     if (!markLostTarget) return;
     const target = markLostTarget;
+    const isPsq =
+      target.procurement_type !== 'dps' && target.bid_stage === 'psq';
     const outcomeLabel = tenderStatusLabel('lost', target.procurement_type);
     try {
       await api.put(`/tenders/${target.id}`, {
         status: 'lost',
         loss_note: lossNote || null,
       });
-      toast.success(`${target.title} marked as ${outcomeLabel}`);
+      if (isPsq) {
+        toast.success('Marked as not shortlisted');
+      } else {
+        toast.success(`${target.title} marked as ${outcomeLabel}`);
+      }
       setMarkLostTarget(null);
       fetchData();
     } catch {
-      toast.error(`Failed to mark as ${outcomeLabel}. Please try again.`);
+      const failLabel = isPsq ? 'not shortlisted' : outcomeLabel;
+      toast.error(`Failed to mark as ${failLabel}. Please try again.`);
+    }
+  }
+
+  async function handleShortlistConfirm({ ittDeadline }: { ittDeadline: string }) {
+    if (!shortlistTarget) return;
+    const target = shortlistTarget;
+    try {
+      await api.post(`/tenders/${target.id}/shortlist`, {
+        itt_deadline: ittDeadline || null,
+      });
+      toast.success('Shortlisted: moved to Info Gathering as an ITT');
+      setShortlistTarget(null);
+      fetchData();
+    } catch {
+      toast.error('Failed to mark as shortlisted. Please try again.');
     }
   }
 
@@ -1367,6 +1435,7 @@ export default function ActiveTenders() {
           onNotes={t => openNotes({ id: t.id, title: t.title })}
           onAdvance={handleAdvance}
           onMarkLost={t => setMarkLostTarget(t)}
+          onShortlist={t => setShortlistTarget(t)}
           onToggleAwaiting={handleToggleAwaiting}
           onDrop={t => setDropTarget(t)}
           onMarkInvoiceSent={openMarkInvoiceSent}
@@ -1494,6 +1563,11 @@ export default function ActiveTenders() {
                   ? `${stats.wonCount} of ${stats.decided} (${stats.winRate}%)`
                   : '0 of 0 (0%)'
               }
+              hint={
+                stats.shortlistY > 0
+                  ? `Shortlist rate: ${stats.shortlistX} of ${stats.shortlistY}`
+                  : undefined
+              }
               icon={Target}
               tone="warning"
               loading={loading}
@@ -1550,6 +1624,7 @@ export default function ActiveTenders() {
                 onEdit={openEdit}
                 onNotes={t => openNotes({ id: t.id, title: t.title })}
                 onAdvance={handleAdvance}
+                onShortlist={t => setShortlistTarget(t)}
                 onEditInvoice={openEditInvoice}
                 onMarkInvoicePaid={inv => setMarkInvoicePaidTarget(inv)}
               />
@@ -1608,8 +1683,16 @@ export default function ActiveTenders() {
         open={markLostTarget !== null}
         tenderTitle={markLostTarget?.title ?? ''}
         procurementType={markLostTarget?.procurement_type}
+        bidStage={markLostTarget?.bid_stage}
         onClose={() => setMarkLostTarget(null)}
         onConfirm={handleMarkLostConfirm}
+      />
+
+      <ShortlistDialog
+        open={shortlistTarget !== null}
+        tenderTitle={shortlistTarget?.title ?? ''}
+        onClose={() => setShortlistTarget(null)}
+        onConfirm={handleShortlistConfirm}
       />
 
       <AwaitingInfoDialog

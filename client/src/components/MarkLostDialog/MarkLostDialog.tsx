@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../Modal/Modal';
 import { Textarea } from '../Textarea/Textarea';
 import { Button } from '../Button/Button';
-import type { ProcurementType } from '../../lib/types';
+import type { BidStage, ProcurementType } from '../../lib/types';
 
 interface MarkLostDialogProps {
   open: boolean;
@@ -11,6 +11,9 @@ interface MarkLostDialogProps {
   /** Type of the record. DPS records read "Not Admitted" in place of
    *  "Lost" throughout. Default preserves the pre-DPS behaviour. */
   procurementType?: ProcurementType;
+  /** Round of the bid. On a non-DPS PSQ, the dialog reads as
+   *  "Not Shortlisted" instead of "Lost". Absent = default behaviour. */
+  bidStage?: BidStage;
   onClose: () => void;
   onConfirm: (payload: { lossNote: string }) => Promise<void> | void;
 }
@@ -19,6 +22,7 @@ export function MarkLostDialog({
   open,
   tenderTitle,
   procurementType = 'tender',
+  bidStage,
   onClose,
   onConfirm,
 }: MarkLostDialogProps) {
@@ -42,10 +46,29 @@ export function MarkLostDialog({
   }
 
   const isDps = procurementType === 'dps';
-  const outcomeLabel = isDps ? 'Not Admitted' : 'Lost';
-  const outcomeTab = isDps ? 'Not Admitted' : 'Lost';
-  const title = isDps ? 'Mark DPS application as Not Admitted' : 'Mark tender as Lost';
-  const description = `${tenderTitle} will be marked as ${outcomeLabel}. This is a final outcome - the row will leave Active and surface in the ${outcomeTab} tab.`;
+  const isPsq = !isDps && bidStage === 'psq';
+
+  let title: string;
+  let description: string;
+  let confirmLabel: string;
+  let noteLabel: string;
+
+  if (isPsq) {
+    title = 'Not shortlisted';
+    description = "This PSQ didn't make the shortlist. It moves to Lost and stays out of the win rate.";
+    confirmLabel = 'Mark Not Shortlisted';
+    noteLabel = 'Reason (optional)';
+  } else if (isDps) {
+    title = 'Mark DPS application as Not Admitted';
+    description = `${tenderTitle} will be marked as Not Admitted. This is a final outcome - the row will leave Active and surface in the Not Admitted tab.`;
+    confirmLabel = 'Mark as Not Admitted';
+    noteLabel = 'Reason (optional)';
+  } else {
+    title = 'Mark tender as Lost';
+    description = `${tenderTitle} will be marked as Lost. This is a final outcome - the row will leave Active and surface in the Lost tab.`;
+    confirmLabel = 'Mark as Lost';
+    noteLabel = 'Loss reason (optional)';
+  }
 
   const footer = (
     <>
@@ -53,7 +76,7 @@ export function MarkLostDialog({
         Cancel
       </Button>
       <Button variant="danger" onClick={handleConfirm} loading={submitting}>
-        {isDps ? 'Mark as Not Admitted' : 'Mark as Lost'}
+        {confirmLabel}
       </Button>
     </>
   );
@@ -68,7 +91,7 @@ export function MarkLostDialog({
       footer={footer}
     >
       <Textarea
-        label={isDps ? 'Reason (optional)' : 'Loss reason (optional)'}
+        label={noteLabel}
         rows={3}
         value={note}
         onChange={e => setNote(e.target.value)}
